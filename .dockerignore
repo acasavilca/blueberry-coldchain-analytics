@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.ipynb
+terraform/
+DEL*
+.old_*

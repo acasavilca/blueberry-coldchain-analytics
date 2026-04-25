@@ -1,0 +1,250 @@
+id: backfill_monthly
+namespace: blueberry_cold_storage
+
+inputs:
+  - id: start_date
+    type: STRING
+    description: "Start date of the month, e.g. 2022-01-01"
+
+  - id: end_date
+    type: STRING
+    description: "End date of the month, e.g. 2022-01-31"
+
+  - id: frequency
+    type: STRING
+    defaults: "hourly"
+
+  - id: seed
+    type: INT
+    defaults: 42
+
+  - id: fruit_type
+    type: STRING
+    defaults: "avocado"
+
+variables:
+  current_state: "{{ kv('simulation_state_' ~ inputs.fruit_type) ?? '{\"next_start\":\"2022-01-01T00:00:00\",\"next_batch_id\":1,\"active_batches\":[]}' }}"
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      serviceAccount: "{{secret('GCP_SERVICE_ACCOUNT')}}"
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      bucket: "{{kv('GCP_BUCKET_NAME')}}"
+
+tasks:
+  - id: download_satellite_data
+    type: io.kestra.plugin.scripts.python.Script
+    containerImage: blueberry_simulator:v001
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    namespaceFiles:
+      enabled: true
+    outputFiles:
+      - "satellite_data.parquet"
+    script: |
+        import pandas as pd
+        from config import LOCATION, RETRIEVAL_CONFIG, WEATHER_DATASET_DTYPES
+        from simulator import retrieve_satellite_data
+
+        start_dt = "{{ inputs.start_date }}"
+        end_dt = "{{ inputs.end_date }}"
+        print(f"Retrieving satellite data: {start_dt} -> {end_dt}")
+
+        df = retrieve_satellite_data(
+            start_dt=start_dt,
+            end_dt=end_dt,
+            latitude=LOCATION["latitude"],
+            longitude=LOCATION["longitude"],
+            dtypes=WEATHER_DATASET_DTYPES,
+            frequency="{{ inputs.frequency }}",
+            **RETRIEVAL_CONFIG,
+        )
+        df.to_parquet("satellite_data.parquet")
+        print(f"Retrieved {len(df)} rows")
+
+  - id: simulator
+    type: io.kestra.plugin.scripts.python.Script
+    containerImage: blueberry_simulator:v001
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      data.parquet: "{{ outputs.download_satellite_data.outputFiles['satellite_data.parquet'] }}"
+    outputFiles:
+      - "raw/**/*.parquet"
+      - "updated_state.json"
+    script: |
+        from config import LOCATION, FORCING_CONFIG, SCHEDULER_CONFIG, SIMULATION_CONFIG, TELEMETRY_CONFIG, RUNTIME_CONFIG, FRUIT_CONFIGS
+        from simulator import (
+            prepare_forcing_arrays,
+            get_tr,
+            create_numba_dicts,
+            build_door_and_mass_schedules,
+            run_simulation_chunk,
+            build_batch_event_tables,
+            build_telemetry_table,
+            expand_minute_timestamps_to_internal,
+            encode_coordinates,
+        )
+        from run_one_chunk import load_state, deserialize_active_batches, serialize_active_batches
+        import json
+        import pandas as pd
+        from pathlib import Path
+        from respiration_data import RESPIRATION_DB
+
+        LOCAL_OUT = Path(".")
+        FRUIT_TYPE = "{{ inputs.fruit_type }}"
+        SEED = {{ inputs.seed }}
+        PLANT_ID = encode_coordinates(float(LOCATION["latitude"]), float(LOCATION["longitude"]))
+
+        raw_state = """{{ vars.current_state }}"""
+        state = json.loads(raw_state)
+
+        start_dt = pd.Timestamp(state["next_start"])
+        end_dt = start_dt + pd.offsets.MonthEnd(0) + pd.Timedelta(days=1)
+        active_batches = deserialize_active_batches(state["active_batches"])
+        next_batch_id = state["next_batch_id"]
+
+        print(f"Simulating: {start_dt} -> {end_dt}")
+
+        df = pd.read_parquet("data.parquet")
+        forcing, df_resampled, timestep = prepare_forcing_arrays(df, **FORCING_CONFIG)
+
+        door_ext_schedule, door_int_schedule, fruit_mass_delta_kg, event_code, incoming_temperature_arr = build_door_and_mass_schedules(
+            hour_arr=forcing["hour"],
+            minute_arr=forcing["minute"],
+            doy_arr=forcing["day_of_year"],
+            month_arr=forcing["month"],
+            year_arr=forcing["year"],
+            # tunnel_exit_fruit_temp=SIMULATION_CONFIG["tunnel_exit_fruit_temp"],
+            fruit_type=FRUIT_TYPE,
+            seed=SEED,
+            **SCHEDULER_CONFIG,
+        )
+
+        T_lookup, R_lookup = get_tr(respiration_database=RESPIRATION_DB, fruit=FRUIT_TYPE)
+        float64_dict, int8_dict = create_numba_dicts()
+
+        FRUIT_CONFIG = FRUIT_CONFIGS[FRUIT_TYPE]
+        SIMULATION_CONFIG["tunnel_exit_fruit_temp"] = FRUIT_CONFIG["tunnel_exit_fruit_temp"]
+        SIMULATION_CONFIG["Cp_fruit"] = FRUIT_CONFIG["Cp_fruit"]
+        SIMULATION_CONFIG["k_p"] = FRUIT_CONFIG["k_p"]
+        SIMULATION_CONFIG["setpoint"] = FRUIT_CONFIG["setpoint"]
+        SIMULATION_CONFIG["target_rh"] = FRUIT_CONFIG["target_rh"]
+        SIMULATION_CONFIG["T_coil_ref"] = FRUIT_CONFIG["T_coil_ref"]
+
+        sim_params = SIMULATION_CONFIG.copy()
+        sim_params["T_lookup"] = T_lookup
+        sim_params["R_lookup"] = R_lookup
+        sim_params["float64_dict"] = float64_dict
+        sim_params["int8_dict"] = int8_dict
+
+        outputs_dict, calls_dict = run_simulation_chunk(
+            T_ambient_arr=forcing["T_ambient"],
+            RH_ambient_arr=forcing["RH_ambient"],
+            P_arr=forcing["P"],
+            GHI_arr=forcing["GHI"],
+            WS_arr=forcing["WS"],
+            T2MDEW_arr=forcing["T2MDEW"],
+            T_ground_arr=forcing["TSOIL_54CM"],
+
+            hour_arr=forcing["hour"],
+            minute_arr=forcing["minute"],
+            second_arr=forcing["second"],
+            doy_arr=forcing["day_of_year"],
+            month_arr=forcing["month"],
+            year_arr=forcing["year"],
+
+            door_ext_schedule=door_ext_schedule,
+            door_int_schedule=door_int_schedule,
+            fruit_mass_delta_kg=fruit_mass_delta_kg,
+            incoming_temperature_arr=incoming_temperature_arr,
+
+            timestep=timestep,
+
+            seed=SEED,
+            **sim_params,
+        )
+
+        outputs_dict_py = {k: outputs_dict[k] for k in outputs_dict}
+        calls_dict_py = {k: calls_dict[k] for k in calls_dict}
+
+        telemetry_dt_arr = expand_minute_timestamps_to_internal(
+            forcing["dt_arr"],
+            int(SIMULATION_CONFIG["dt_internal"])
+        )
+        telemetry_df = build_telemetry_table(
+            plant_id=PLANT_ID,
+            fruit_type=FRUIT_TYPE,
+            telemetry_dt_arr=telemetry_dt_arr,
+            outputs_dict=outputs_dict_py,
+            calls_dict=calls_dict_py,
+            seed=SEED,
+            **TELEMETRY_CONFIG,
+        )
+
+        events_df, batches_df, active_batches, next_batch_id = build_batch_event_tables(
+            plant_id=PLANT_ID,
+            dt_arr=forcing["dt_arr"],
+            fruit_mass_delta_kg=fruit_mass_delta_kg,
+            incoming_temperature_arr=incoming_temperature_arr,
+            fruit_type=FRUIT_TYPE,
+            active_batches=active_batches,
+            next_batch_id=next_batch_id,
+            seed=SEED,
+        )
+
+        day_str = start_dt.strftime("%Y-%m-%d")
+        hour_str = str(forcing["hour"][0]).zfill(2)
+
+        telemetry_dir = LOCAL_OUT / "raw" / "telemetry" / f"date={day_str}"
+        events_dir = LOCAL_OUT / "raw" / "events" / f"date={day_str}"
+        batches_dir = LOCAL_OUT / "raw" / "batches" / f"date={day_str}"
+
+        for d in [telemetry_dir, events_dir, batches_dir]:
+            d.mkdir(parents=True, exist_ok=True)
+
+        if len(events_df) == 0:
+            events_df = pd.DataFrame(columns=["plant_id", "timestamp", "event_type", "batch_id", "mass_kg", "fruit_type", "quality_grade", "tunnel_exit_temp_c"])
+        if len(batches_df) == 0:
+            batches_df = pd.DataFrame(columns=["plant_id", "batch_id", "fruit_type", "arrival_ts", "mass_kg_initial", "mass_kg_remaining", "tunnel_exit_temp_c", "quality_grade", "first_dispatch_ts", "final_dispatch_ts"])
+
+        telemetry_df.to_parquet(telemetry_dir / f"telemetry_{hour_str}.parquet", index=False)
+        events_df.to_parquet(events_dir / f"events_{hour_str}.parquet", index=False)
+        batches_df.to_parquet(batches_dir / f"batches_{hour_str}.parquet", index=False)
+
+        new_state = {
+            "next_start": end_dt.isoformat(),
+            "next_batch_id": next_batch_id,
+            "active_batches": serialize_active_batches(active_batches)
+        }
+        with open("updated_state.json", "w") as f:
+            json.dump(new_state, f, indent=2)
+        print(f"Completed chunk {start_dt} -> {end_dt}")
+
+  - id: save_simulation_state
+    type: io.kestra.plugin.core.kv.Set
+    key: "simulation_state_{{ inputs.fruit_type }}"
+    kvType: STRING
+    value: "{{ read(outputs.simulator.outputFiles['updated_state.json']) }}"
+
+  - id: parallel_processing
+    type: io.kestra.plugin.core.flow.Parallel
+    tasks:
+      - id: upload_telemetry
+        type: io.kestra.plugin.gcp.gcs.Upload
+        from: "{{ outputs.simulator.outputFiles['raw/telemetry/date=' ~ inputs.start_date ~ '/telemetry_00.parquet'] }}"
+        to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/telemetry/monthly/telemetry_{{ inputs.fruit_type }}_{{ inputs.start_date | slice(0, 7) }}.parquet"
+
+      - id: upload_events
+        type: io.kestra.plugin.gcp.gcs.Upload
+        from: "{{ outputs.simulator.outputFiles['raw/events/date=' ~ inputs.start_date ~ '/events_00.parquet'] }}"
+        to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/events/monthly/events_{{ inputs.fruit_type }}_{{ inputs.start_date | slice(0, 7) }}.parquet"
+
+      - id: upload_batches
+        type: io.kestra.plugin.gcp.gcs.Upload
+        from: "{{ outputs.simulator.outputFiles['raw/batches/date=' ~ inputs.start_date ~ '/batches_00.parquet'] }}"
+        to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/batches/monthly/batches_{{ inputs.fruit_type }}_{{ inputs.start_date | slice(0, 7) }}.parquet"

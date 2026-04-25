@@ -1,0 +1,9 @@
+id: generate_initial_simulation_state
+namespace: blueberry_cold_storage
+
+tasks:
+  - id: simulation_state_avocado
+    type: io.kestra.plugin.core.kv.Set
+    key: simulation_state_avocado
+    kvType: STRING
+    value: '{"next_start":"2022-01-01T00:00:00","next_batch_id":1,"active_batches":[]}'

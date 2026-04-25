@@ -1,0 +1,46 @@
+id: bq_setup
+namespace: blueberry_cold_storage
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      serviceAccount: "{{secret('GCP_SERVICE_ACCOUNT')}}"
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+
+tasks:
+  - id: create_telemetry_ext
+    type: io.kestra.plugin.gcp.bigquery.Query
+    sql: |
+      CREATE OR REPLACE EXTERNAL TABLE `{{kv('GCP_PROJECT_ID')}}.{{kv('GCP_DATASET')}}.telemetry_ext`
+      OPTIONS (
+        format = 'PARQUET',
+        uris = ['gs://{{kv('GCP_BUCKET_NAME')}}/raw/telemetry/monthly/*.parquet']
+      );
+
+  - id: create_events_ext
+    type: io.kestra.plugin.gcp.bigquery.Query
+    sql: |
+      CREATE OR REPLACE EXTERNAL TABLE `{{kv('GCP_PROJECT_ID')}}.{{kv('GCP_DATASET')}}.events_ext`
+      OPTIONS (
+        format = 'PARQUET',
+        uris = ['gs://{{kv('GCP_BUCKET_NAME')}}/raw/events/monthly/*.parquet']
+      );
+
+  - id: create_batches_ext
+    type: io.kestra.plugin.gcp.bigquery.Query
+    sql: |
+      CREATE OR REPLACE EXTERNAL TABLE `{{kv('GCP_PROJECT_ID')}}.{{kv('GCP_DATASET')}}.batches_ext`
+      OPTIONS (
+        format = 'PARQUET',
+        uris = ['gs://{{kv('GCP_BUCKET_NAME')}}/raw/batches/monthly/*.parquet']
+      );
+
+  - id: create_satellite_ext
+    type: io.kestra.plugin.gcp.bigquery.Query
+    sql: |
+      CREATE OR REPLACE EXTERNAL TABLE `{{kv('GCP_PROJECT_ID')}}.{{kv('GCP_DATASET')}}.satellite_ext`
+      OPTIONS (
+        format = 'PARQUET',
+        uris = ['gs://{{kv('GCP_BUCKET_NAME')}}/raw/satellite/monthly/*.parquet']
+      );

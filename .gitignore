@@ -1,0 +1,66 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+.venv/
+venv/
+env/
+build/
+dist/
+wheels/
+*.egg-info/
+.ipynb_checkpoints/
+*.ipynb
+*.swp
+
+# =========================
+# Environment & Secrets
+# =========================
+.env
+.env*
+.env_encoded
+*.json.key
+*credentials*.json
+*service_account*.json
+secrets/
+
+# =========================
+# Terraform
+# =========================
+terraform/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform.lock.hcl
+
+# =========================
+# dbt
+# =========================
+blueberry_dbt/target/
+blueberry_dbt/dbt_packages/
+blueberry_dbt/logs/
+
+# =========================
+# Project-specific
+# =========================
+notes*
+ref_files/
+.old_*
+ref_*
+BACKUP_*
+BACKUP*
+DEL*
+kv_*
+uv.lock
+data_out/
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
