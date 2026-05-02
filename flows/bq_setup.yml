@@ -1,0 +1,54 @@
+id: bq_setup
+namespace: blueberry_cold_storage
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      serviceAccount: "{{secret('GCP_SERVICE_ACCOUNT')}}"
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+
+tasks:
+  - id: create_telemetry
+    type: io.kestra.plugin.gcp.cli.GCloudCLI
+    commands:
+      - >
+        bq load --replace --autodetect --source_format=PARQUET
+        --time_partitioning_field=datetime
+        --time_partitioning_type=DAY
+        --clustering_fields=plant_id,fruit_type
+        {{kv('GCP_DATASET')}}.telemetry
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/telemetry/monthly/*.parquet
+
+  - id: create_events
+    type: io.kestra.plugin.gcp.cli.GCloudCLI
+    commands:
+      - >
+        bq load --replace --autodetect --source_format=PARQUET
+        --time_partitioning_field=timestamp
+        --time_partitioning_type=DAY
+        --clustering_fields=fruit_type,quality_grade
+        {{kv('GCP_DATASET')}}.events
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/events/monthly/*.parquet
+
+  - id: create_batches
+    type: io.kestra.plugin.gcp.cli.GCloudCLI
+    commands:
+      - >
+        bq load --replace --autodetect --source_format=PARQUET
+        --time_partitioning_field=arrival_ts
+        --time_partitioning_type=DAY
+        --clustering_fields=fruit_type,quality_grade
+        {{kv('GCP_DATASET')}}.batches
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/batches/monthly/*.parquet
+
+  - id: create_satellite
+    type: io.kestra.plugin.gcp.cli.GCloudCLI
+    commands:
+      - >
+        bq load --replace --autodetect --source_format=PARQUET
+        --time_partitioning_field=datetime
+        --time_partitioning_type=DAY
+        {{kv('GCP_DATASET')}}.satellite
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/satellite/monthly/*.parquet
+

@@ -25,3 +25,9 @@ tasks:
     key: GCP_DATASET
     kvType: STRING
     value: raw_simulated_data
+
+  - id: gmail_address
+    type: io.kestra.plugin.core.kv.Set
+    key: MY_GMAIL
+    kvType: STRING
+    value: acasavilca@gmail.com

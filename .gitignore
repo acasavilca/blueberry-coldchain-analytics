@@ -52,12 +52,12 @@ notes*
 ref_files/
 .old_*
 ref_*
-BACKUP_*
-BACKUP*
+*BACKUP*
 DEL*
 kv_*
 uv.lock
 data_out/
+*password*
 
 # =========================
 # OS

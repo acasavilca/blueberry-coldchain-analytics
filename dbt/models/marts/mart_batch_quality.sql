@@ -1,5 +1,11 @@
 {{ config(
     materialized='table',
+    partition_by={
+        'field': 'month',
+        'data_type': 'date',
+        'granularity': 'month', 
+    },
+    cluster_by=['fruit_type', 'quality_grade']
 ) }}
 
 select

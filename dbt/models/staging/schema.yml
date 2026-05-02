@@ -1,0 +1,205 @@
+models:
+  - name: stg_telemetry
+    description: >
+      Staging model for telemetry data. The model stardizes column names and data types.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - plant_id
+            - fruit_type
+            - measured_at
+    columns:
+      - name: plant_id
+        description: "Unique identifier for the processing plant."
+        data_tests:
+          - not_null
+
+      - name: fruit_type
+        description: "Type of fruit being monitored."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['avocado', 'blueberry', 'strawberry']
+
+      - name: measured_at
+        description: "Timestamp of the telemetry reading."
+        data_tests:
+          - not_null
+
+      - name: loaded_at
+        description: "Timestamp of data being loaded to datalake."
+        data_tests:
+          - not_null
+
+      - name: t_room
+        description: "Ambient room temperature."
+
+      - name: t_pulp
+        description: "Internal temperature of the fruit pulp."
+
+      - name: rh_room
+        description: "Relative humidity of the room."
+
+      - name: co2_ppm
+        description: "Carbon dioxide concentration in parts per million."
+
+      - name: o2_pct
+        description: "Oxygen concentration percentage."
+
+      - name: w_compressor_kw
+        description: "Compressor power consumption in kilowatts."
+        data_tests:
+          - not_null
+
+      - name: t_evap_in_air
+        description: "Temperature of air entering the evaporator."
+        
+      - name: t_evap_out_air
+        description: "Temperature of air exiting the evaporator."
+
+      - name: rh_evap_out
+        description: "Relative humidity of air exiting the evaporator."
+
+      - name: m_dot_evap_air_kg_s
+        description: "Mass flow rate of air through the evaporator (kg/s)."
+
+      - name: cooling_call
+        description: "Binary flag indicating if cooling is active (1/0)."
+
+      - name: humidifier_call
+        description: "Binary flag indicating if humidification is active (1/0)."
+
+  - name: stg_batches
+    description: "Staging model for historical batch records and final tunnel exit temperatures."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - plant_id
+            - batch_id
+    columns:
+      - name: plant_id
+        data_tests:
+          - not_null
+
+      - name: batch_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: fruit_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['avocado', 'blueberry', 'strawberry']
+
+      - name: quality_grade
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['A', 'B', 'C']
+
+      - name: arrived_at
+        data_tests:
+          - not_null
+
+      - name: dispatched_first_at
+
+      - name: dispatched_final_at
+
+      - name: loaded_at
+        description: "Timestamp of data being loaded to datalake."
+        data_tests:
+          - not_null
+
+      - name: mass_kg_initial
+
+      - name: mass_kg_remaining
+
+      - name: tunnel_exit_temp_c
+
+  - name: stg_events
+    description: "Staging model for discrete operational events (e.g., loading, unloading)."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - plant_id
+            - fruit_type
+            - batch_id
+            - event_at
+            - event_type
+    columns:
+      - name: plant_id
+        data_tests:
+          - not_null
+
+      - name: event_at
+        data_tests:
+          - not_null
+
+      - name: loaded_at
+        description: "Timestamp of data being loaded to datalake."
+        data_tests:
+          - not_null
+
+      - name: event_type
+        data_tests:
+            - not_null
+            - accepted_values:
+                arguments:
+                  values: ['arrival', 'dispatch', 'dispatch_eod']
+
+      - name: batch_id
+        data_tests:
+          - not_null
+
+      - name: mass_kg
+
+      - name: fruit_type
+        data_tests:
+            - not_null
+            - accepted_values:
+                arguments:
+                  values: ['avocado', 'blueberry', 'strawberry']
+
+      - name: quality_grade
+
+      - name: tunnel_exit_temp_c
+
+  - name: stg_satellite
+    description: "Staging model for external weather and environmental data from satellite sources."
+    columns:
+      - name: measured_at
+        data_tests:
+          - not_null
+
+      - name: loaded_at
+        description: "Timestamp of data being loaded to datalake."
+        data_tests:
+          - not_null
+
+      - name: temp_2m
+        description: "Air temperature at 2 meters height."
+        data_tests:
+          - not_null
+
+      - name: rh_2m
+        description: "Relative humidity at 2 meters height."
+        data_tests:
+          - not_null
+
+      - name: wind_speed_10m
+        description: "Wind speed at 10 meters height."
+
+      - name: shortwave_radiation
+        description: "All sky surface shortwave downward irradiance."
+
+      - name: dew_point_2m
+
+      - name: pressure
+
+      - name: t_soil_54cm
+        description: "Soil temperature at 54cm depth."
+        data_tests:
+          - not_null

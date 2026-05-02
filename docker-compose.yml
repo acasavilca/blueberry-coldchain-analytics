@@ -65,11 +65,7 @@ services:
             tmpDir:
               path: /tmp/kestra-wd/tmp
           url: http://localhost:8080/
-          ai:
-            type: gemini
-            gemini:
-              model-name: "gemini-3-flash"
-              api-key: AIzaSyBL8myWnWSjKmTu7qmCfDcDOv1yBs6Iix4
+
     ports:
       - "8080:8080"
         #  - "8081:8081"
@@ -92,9 +88,7 @@ services:
       echo 'Kestra is up, importing flows...';
       for f in /flows/*.yml; do
         echo Importing $$f;
-        curl -sf -X POST -u 'admin@kestra.io:Admin123' \
-          'http://kestra:8080/api/v1/flows/import?overwrite=true' \
-          -F fileUpload=@$$f;
+        curl -sf -X POST -u 'admin@kestra.io:Admin123' -F fileUpload=@$$f 'http://kestra:8080/api/v1/flows/import?overwrite=true';
       done;
       echo 'Done importing flows.';
       "

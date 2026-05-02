@@ -2,6 +2,11 @@ id: backfill_monthly_schedule
 namespace: blueberry_cold_storage
 
 inputs:
+  - id: start_date
+    type: STRING
+    description: "Start date of the month, e.g. 2022-01-01"
+    # defaults: "{{ trigger.date ?? execution.startDate | dateAdd(-1, 'MONTHS') | date('yyyy-MM-dd') }}"
+
   - id: frequency
     type: STRING
     defaults: "hourly"
@@ -9,13 +14,16 @@ inputs:
   - id: seed
     type: INT
     defaults: 42
-  
-  - id: start_date
+
+  - id: fruit_type
     type: STRING
-    defaults: "{{ trigger.date ?? execution.startDate | dateAdd(-1, 'MONTHS') | date('yyyy-MM-dd') }}"
+    defaults: "blueberry"
+
+  - id: is_satellite_data_in_lake
+    type: STRING
 
 variables:
-  current_state: "{{ kv('simulation_state') ?? '{\"next_start\":\"2022-01-01T00:00:00\",\"next_batch_id\":1,\"active_batches\":[]}' }}"
+  current_state: "{{ kv('simulation_state_' ~ inputs.fruit_type) ?? '{\"next_start\":\"2022-01-01T00:00:00\",\"next_batch_id\":1,\"active_batches\":[]}' }}"
 
 pluginDefaults:
   - type: io.kestra.plugin.gcp
@@ -31,6 +39,7 @@ tasks:
     containerImage: blueberry_simulator:v001
     taskRunner:
       type: io.kestra.plugin.scripts.runner.docker.Docker
+    runIf: "{{ inputs.is_satellite_data_in_lake == 'false' }}"
     namespaceFiles:
       enabled: true
     outputFiles:
@@ -41,8 +50,9 @@ tasks:
         from simulator import retrieve_satellite_data
 
         start_dt = "{{ inputs.start_date }}"
-        end_dt = end_dt = (pd.Timestamp(start_dt) + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d")
+        end_dt = (pd.Timestamp(start_dt) + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d")
         print(f"Retrieving satellite data: {start_dt} -> {end_dt}")
+
         df = retrieve_satellite_data(
             start_dt=start_dt,
             end_dt=end_dt,
@@ -52,6 +62,7 @@ tasks:
             frequency="{{ inputs.frequency }}",
             **RETRIEVAL_CONFIG,
         )
+        df['loaded_at'] = pd.Timestamp.now()
         df.to_parquet("satellite_data.parquet")
         print(f"Retrieved {len(df)} rows")
 
@@ -63,12 +74,13 @@ tasks:
     namespaceFiles:
       enabled: true
     inputFiles:
-      data.parquet: "{{ outputs.download_satellite_data.outputFiles['satellite_data.parquet'] }}"
+      # data.parquet: "{{ outputs.download_satellite_data.outputFiles['satellite_data.parquet'] }}"
+      data.parquet: "{{ inputs.is_satellite_data_in_lake == 'true' ? 'gs://' ~ kv('GCP_BUCKET_NAME') ~ '/raw/satellite/monthly/satellite_data_' ~ (inputs.start_date | slice(0, 7)) ~ '.parquet' : outputs.download_satellite_data.outputFiles['satellite_data.parquet'] }}"
     outputFiles:
       - "raw/**/*.parquet"
       - "updated_state.json"
     script: |
-        from config import LOCATION, FORCING_CONFIG, SCHEDULER_CONFIG, SIMULATION_CONFIG, TELEMETRY_CONFIG, RUNTIME_CONFIG
+        from config import LOCATION, FORCING_CONFIG, SCHEDULER_CONFIG, SIMULATION_CONFIG, TELEMETRY_CONFIG, RUNTIME_CONFIG, FRUIT_CONFIGS
         from simulator import (
             prepare_forcing_arrays,
             get_tr,
@@ -87,7 +99,7 @@ tasks:
         from respiration_data import RESPIRATION_DB
 
         LOCAL_OUT = Path(".")
-        FRUIT_TYPE = TELEMETRY_CONFIG["fruit_type"]
+        FRUIT_TYPE = "{{ inputs.fruit_type }}"
         SEED = {{ inputs.seed }}
         PLANT_ID = encode_coordinates(float(LOCATION["latitude"]), float(LOCATION["longitude"]))
 
@@ -110,13 +122,23 @@ tasks:
             doy_arr=forcing["day_of_year"],
             month_arr=forcing["month"],
             year_arr=forcing["year"],
-            tunnel_exit_fruit_temp=SIMULATION_CONFIG["tunnel_exit_fruit_temp"],
+            # tunnel_exit_fruit_temp=SIMULATION_CONFIG["tunnel_exit_fruit_temp"],
+            fruit_type=FRUIT_TYPE,
             seed=SEED,
             **SCHEDULER_CONFIG,
         )
 
         T_lookup, R_lookup = get_tr(respiration_database=RESPIRATION_DB, fruit=FRUIT_TYPE)
         float64_dict, int8_dict = create_numba_dicts()
+
+        FRUIT_CONFIG = FRUIT_CONFIGS[FRUIT_TYPE]
+        SIMULATION_CONFIG["tunnel_exit_fruit_temp"] = FRUIT_CONFIG["tunnel_exit_fruit_temp"]
+        SIMULATION_CONFIG["Cp_fruit"] = FRUIT_CONFIG["Cp_fruit"]
+        SIMULATION_CONFIG["k_p"] = FRUIT_CONFIG["k_p"]
+        SIMULATION_CONFIG["setpoint"] = FRUIT_CONFIG["setpoint"]
+        SIMULATION_CONFIG["target_rh"] = FRUIT_CONFIG["target_rh"]
+        SIMULATION_CONFIG["T_coil_ref"] = FRUIT_CONFIG["T_coil_ref"]
+
         sim_params = SIMULATION_CONFIG.copy()
         sim_params["T_lookup"] = T_lookup
         sim_params["R_lookup"] = R_lookup
@@ -131,17 +153,21 @@ tasks:
             WS_arr=forcing["WS"],
             T2MDEW_arr=forcing["T2MDEW"],
             T_ground_arr=forcing["TSOIL_54CM"],
+
             hour_arr=forcing["hour"],
             minute_arr=forcing["minute"],
             second_arr=forcing["second"],
             doy_arr=forcing["day_of_year"],
             month_arr=forcing["month"],
             year_arr=forcing["year"],
+
             door_ext_schedule=door_ext_schedule,
             door_int_schedule=door_int_schedule,
             fruit_mass_delta_kg=fruit_mass_delta_kg,
             incoming_temperature_arr=incoming_temperature_arr,
+
             timestep=timestep,
+
             seed=SEED,
             **sim_params,
         )
@@ -155,12 +181,14 @@ tasks:
         )
         telemetry_df = build_telemetry_table(
             plant_id=PLANT_ID,
+            fruit_type=FRUIT_TYPE,
             telemetry_dt_arr=telemetry_dt_arr,
             outputs_dict=outputs_dict_py,
             calls_dict=calls_dict_py,
             seed=SEED,
             **TELEMETRY_CONFIG,
         )
+        telemetry_df['loaded_at'] = pd.Timestamp.now()
 
         events_df, batches_df, active_batches, next_batch_id = build_batch_event_tables(
             plant_id=PLANT_ID,
@@ -172,6 +200,8 @@ tasks:
             next_batch_id=next_batch_id,
             seed=SEED,
         )
+        events_df['loaded_at'] = pd.Timestamp.now()
+        batches_df['loaded_at'] = pd.Timestamp.now()
 
         day_str = start_dt.strftime("%Y-%m-%d")
         hour_str = str(forcing["hour"][0]).zfill(2)
@@ -202,11 +232,8 @@ tasks:
         print(f"Completed chunk {start_dt} -> {end_dt}")
 
   - id: save_simulation_state
-    # type: io.kestra.plugin.scripts.python.Script
-    # script: |
-    #     print("DRY RUN - would save state but skipping")
     type: io.kestra.plugin.core.kv.Set
-    key: simulation_state
+    key: "simulation_state_{{ inputs.fruit_type }}"
     kvType: STRING
     value: "{{ read(outputs.simulator.outputFiles['updated_state.json']) }}"
 
@@ -215,27 +242,27 @@ tasks:
     tasks:
       - id: upload_satellite
         type: io.kestra.plugin.gcp.gcs.Upload
+        runIf: "{{ inputs.is_satellite_data_in_lake == 'false' }}"
         from: "{{ outputs.download_satellite_data.outputFiles['satellite_data.parquet'] }}"
         to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/satellite/monthly/satellite_data_{{ inputs.start_date | slice(0, 7) }}.parquet"
 
       - id: upload_telemetry
         type: io.kestra.plugin.gcp.gcs.Upload
-        # Using a safer way to access the dynamic path
         from: "{{ outputs.simulator.outputFiles['raw/telemetry/date=' ~ inputs.start_date ~ '/telemetry_00.parquet'] }}"
-        to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/telemetry/monthly/telemetry_{{ inputs.start_date | slice(0, 7) }}.parquet"
+        to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/telemetry/monthly/telemetry_{{ inputs.fruit_type }}_{{ inputs.start_date | slice(0, 7) }}.parquet"
 
       - id: upload_events
         type: io.kestra.plugin.gcp.gcs.Upload
         from: "{{ outputs.simulator.outputFiles['raw/events/date=' ~ inputs.start_date ~ '/events_00.parquet'] }}"
-        to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/events/monthly/events_{{ inputs.start_date | slice(0, 7) }}.parquet"
+        to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/events/monthly/events_{{ inputs.fruit_type }}_{{ inputs.start_date | slice(0, 7) }}.parquet"
 
       - id: upload_batches
         type: io.kestra.plugin.gcp.gcs.Upload
         from: "{{ outputs.simulator.outputFiles['raw/batches/date=' ~ inputs.start_date ~ '/batches_00.parquet'] }}"
-        to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/batches/monthly/batches_{{ inputs.start_date | slice(0, 7) }}.parquet"
+        to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/batches/monthly/batches_{{ inputs.fruit_type }}_{{ inputs.start_date | slice(0, 7) }}.parquet"
 
-triggers:
-  - id: monthly_schedule
-    type: io.kestra.plugin.core.trigger.Schedule
-    cron: "0 1 1 * *"  # 1am on the 1st of every month
-    timezone: America/New_York
+# triggers:
+#   - id: monthly_schedule
+#     type: io.kestra.plugin.core.trigger.Schedule
+#     cron: "0 1 1 * *"  # 1am on the 1st of every month
+#     timezone: America/New_York
