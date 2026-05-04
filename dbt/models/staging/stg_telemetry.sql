@@ -11,7 +11,7 @@ renamed as (
         cast(fruit_type as string) as fruit_type,
 
         -- timestamps
-        cast(datetime as timestamp) as measured_at,
+        cast(datetime as datetime) as measured_at,
         cast(loaded_at as timestamp) as loaded_at,
 
         -- telemetry data

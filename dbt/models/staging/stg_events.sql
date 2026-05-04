@@ -7,7 +7,7 @@ with source as (
 renamed as (
     select
         cast(plant_id as string) as plant_id,
-        cast(timestamp as timestamp) as event_at,
+        cast(timestamp as datetime) as event_at,
         cast(loaded_at as timestamp) as loaded_at,
         cast(event_type as string) as event_type,
         cast(batch_id as int64) as batch_id,

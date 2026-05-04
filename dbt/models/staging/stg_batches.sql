@@ -13,9 +13,9 @@ renamed as (
         cast(quality_grade as string) as quality_grade,
 
         -- timestamps
-        cast(arrival_ts as timestamp) as arrived_at,
-        cast(first_dispatch_ts as timestamp) as dispatched_first_at,
-        cast(final_dispatch_ts as timestamp) as dispatched_final_at,
+        cast(arrival_ts as datetime) as arrived_at,
+        cast(first_dispatch_ts as datetime) as dispatched_first_at,
+        cast(final_dispatch_ts as datetime) as dispatched_final_at,
         cast(loaded_at as timestamp) as loaded_at,
 
         cast(mass_kg_initial as float64) as mass_kg_initial,

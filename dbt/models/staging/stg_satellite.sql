@@ -6,7 +6,7 @@ with source as (
 
 renamed as (
     select
-        cast(datetime as timestamp) as measured_at,
+        cast(datetime as datetime) as measured_at,
         cast(loaded_at as timestamp) as loaded_at,
         cast(T2M as float64) as temp_2m,
         cast(RH2M as float64) as rh_2m,
