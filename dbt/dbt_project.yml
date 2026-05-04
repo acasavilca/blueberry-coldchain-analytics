@@ -39,12 +39,9 @@ clean-targets:         # directories to be removed by `dbt clean`
 models:
   dbt:
     staging:
-      +schema: processed_data
+      +schema: raw_dataset
     intermediate:
-      +schema: processed_data
+      +schema: processed_dataset
     marts:
-      +schema: processed_data
-  my_new_project:
-    # Applies to all files under models/example/
-    example:
-      +materialized: table
+      +schema: processed_dataset
+
