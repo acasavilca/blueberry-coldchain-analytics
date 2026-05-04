@@ -5,7 +5,7 @@
 select
     plant_id,
     fruit_type,
-    timestamp_trunc(datetime, hour) as date,
+    timestamp_trunc(measured_at, hour) as date,
     
     avg(1006.0 * m_dot_evap_air_kg_s * (t_evap_in_air - t_evap_out_air) / 1000) as q_sensible_kw,
     avg(w_compressor_kw) as w_compressor_kw,

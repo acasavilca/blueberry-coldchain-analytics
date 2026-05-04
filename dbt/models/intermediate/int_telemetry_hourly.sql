@@ -5,7 +5,7 @@
 select
     plant_id,
     fruit_type,
-    timestamp_trunc(datetime, hour) as date,
+    timestamp_trunc(measured_at, hour) as date,
 
     avg(t_room) as avg_t_room,
     avg(t_pulp) as avg_t_pulp,
