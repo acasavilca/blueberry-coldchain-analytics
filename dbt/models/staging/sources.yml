@@ -3,7 +3,7 @@ version: 2
 sources:
   - name: raw_data
     database: fruit-packing-plant-simulator  # Your Project Name
-    schema: raw_dataset   # Your Dataset Name
+    schema: raw   # Your Dataset Name
     tables:
       - name: batches
       - name: events

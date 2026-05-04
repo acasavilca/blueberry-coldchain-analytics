@@ -39,9 +39,9 @@ clean-targets:         # directories to be removed by `dbt clean`
 models:
   blueberry_cold_storage:
     staging:
-      +schema: raw_dataset
+      +materialized: view
     intermediate:
-      +schema: processed_dataset
+      +materialized: table
     marts:
-      +schema: processed_dataset
+      +materialized: table
 
