@@ -19,8 +19,7 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              arguments:
-                values: ['avocado', 'blueberry', 'strawberry']
+              values: ['avocado', 'blueberry', 'strawberry']
 
       - name: measured_at
         description: "Timestamp of the telemetry reading."
@@ -91,14 +90,12 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              arguments:
-                values: ['avocado', 'blueberry', 'strawberry']
+              values: ['avocado', 'blueberry', 'strawberry']
 
       - name: quality_grade
         data_tests:
           - accepted_values:
-              arguments:
-                values: ['A', 'B', 'C']
+              values: ['A', 'B', 'C']
 
       - name: arrived_at
         data_tests:
@@ -147,8 +144,7 @@ models:
         data_tests:
             - not_null
             - accepted_values:
-                arguments:
-                  values: ['arrival', 'dispatch', 'dispatch_eod']
+                values: ['arrival', 'dispatch', 'dispatch_eod']
 
       - name: batch_id
         data_tests:
@@ -160,8 +156,7 @@ models:
         data_tests:
             - not_null
             - accepted_values:
-                arguments:
-                  values: ['avocado', 'blueberry', 'strawberry']
+                values: ['avocado', 'blueberry', 'strawberry']
 
       - name: quality_grade
 

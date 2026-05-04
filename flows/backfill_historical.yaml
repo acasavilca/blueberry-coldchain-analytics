@@ -1,0 +1,113 @@
+id: backfill_historical
+namespace: blueberry_cold_storage
+
+inputs:
+  - id: start_of_operations
+    type: STRING
+    description: "the month when the cold storage room started operating or recording data"
+    defaults: "2022-01-01"
+
+  - id: frequency
+    type: STRING
+    defaults: "hourly"
+
+  - id: seed
+    type: INT
+    defaults: 42
+
+  - id: fruit_types
+    type: ARRAY
+    itemType: STRING
+    defaults: ["blueberry", "avocado"]
+    description: "List of fruits for which to generate data"
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      serviceAccount: "{{secret('GCP_SERVICE_ACCOUNT')}}"
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      bucket: "{{kv('GCP_BUCKET_NAME')}}"
+
+tasks:
+  - id: generate_month_list
+    type: io.kestra.plugin.scripts.python.Script
+    containerImage: blueberry_simulator:v001
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    namespaceFiles:
+      enabled: true
+    script: |
+      from datetime import datetime
+      from dateutil.relativedelta import relativedelta
+      from kestra import Kestra
+
+      # Parse input and get current time
+      start = datetime.strptime("{{ inputs.start_of_operations }}", "%Y-%m-%d")
+      end = (datetime.now() - relativedelta(months=1)).replace(day=1)
+      
+      months = []
+      current = start.replace(day=1)
+      
+      while current <= end:
+          months.append(current.strftime("%Y-%m"))
+          current += relativedelta(months=1)
+      
+      # Export the list so the next task can see it
+      Kestra.outputs({'month_range': months})
+
+  - id: debug_vars
+    type: io.kestra.plugin.scripts.shell.Commands
+    commands:
+      # - echo "backfill_complete value is {{ vars.backfill_complete }}"
+      - echo "kv direct value is {{ kv('backfill_complete') }}"
+
+  - id: init_simulation_state_per_fruit
+    type: io.kestra.plugin.core.flow.ForEach
+    concurrencyLimit: 1
+    values: "{{ inputs.fruit_types }}"
+    tasks:
+      - id: init_simulation_state
+        type: io.kestra.plugin.core.kv.Set
+        key: "simulation_state_{{ taskrun.value }}"
+        kvType: STRING
+        value:  '{"next_start":"{{ inputs.start_of_operations }}T00:00:00","next_batch_id":1,"active_batches":[]}'
+
+  - id: iterate_months
+    type: io.kestra.plugin.core.flow.ForEach
+    concurrencyLimit: 1
+    values: "{{ outputs.generate_month_list.vars.month_range }}"
+    tasks:
+      - id: download_satellite_data
+        type: io.kestra.plugin.core.flow.Subflow
+        flowId: retrieve_satellite_data
+        namespace: blueberry_cold_storage
+        wait: true
+        transmitFailed: true
+        inputs:
+          start_date: "{{ taskrun.value }}-01"
+          frequency: "hourly"
+
+      - id: iterate_fruits
+        type: io.kestra.plugin.core.flow.ForEach
+        concurrencyLimit: 1
+        values: "{{ inputs.fruit_types }}"
+        tasks:
+          - id: run_one_month
+            type: io.kestra.plugin.core.flow.Subflow
+            flowId: backfill_monthly
+            namespace: blueberry_cold_storage
+            wait: true
+            transmitFailed: true
+            inputs:
+              start_date: "{{ parent.taskrun.value }}-01"
+              frequency: "hourly"
+              seed: "{{ inputs.seed }}"
+              fruit_type: "{{ taskrun.value }}"
+              weather_seed_data: "{{ outputs.download_satellite_data[parent.taskrun.value].outputs.out_parquet }}"
+
+      - id: upload_satellite_data
+        type: io.kestra.plugin.gcp.gcs.Upload
+        from: "{{ outputs.download_satellite_data[taskrun.value].outputs.out_parquet }}"
+        to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/satellite/monthly/satellite_data_{{ taskrun.value }}.parquet"
+

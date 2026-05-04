@@ -1,0 +1,64 @@
+id: backfill_monthly_scheduled
+namespace: blueberry_cold_storage
+
+inputs:
+  - id: start_date
+    type: STRING
+    description: "Start date of the month, e.g. 2025-03-01"
+    # defaults: "{{ trigger.date ?? execution.startDate | dateAdd(-1, 'MONTHS') | date('yyyy-MM-dd') }}"
+
+  - id: frequency
+    type: STRING
+    defaults: "hourly"
+
+  - id: seed
+    type: INT
+    defaults: 42
+
+  - id: fruit_types
+    type: ARRAY
+    itemType: STRING
+    defaults: ["blueberry", "avocado"]
+    description: "List of fruits for which to generate data"
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      serviceAccount: "{{secret('GCP_SERVICE_ACCOUNT')}}"
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      bucket: "{{kv('GCP_BUCKET_NAME')}}"
+
+tasks:
+  - id: download_satellite_data
+    type: io.kestra.plugin.core.flow.Subflow
+    flowId: retrieve_satellite_data
+    namespace: blueberry_cold_storage
+    wait: true
+    transmitFailed: true
+    inputs:
+      start_date: "{{ inputs.start_date }}"
+      frequency: "hourly"
+
+  - id: iterate_fruits
+    type: io.kestra.plugin.core.flow.ForEach
+    concurrencyLimit: 1
+    values: "{{ inputs.fruit_types }}"
+    tasks:
+      - id: run_monthly_update
+        type: io.kestra.plugin.core.flow.Subflow
+        flowId: backfill_monthly
+        namespace: blueberry_cold_storage
+        wait: true
+        transmitFailed: true
+        inputs:
+          start_date: "{{ inputs.start_date }}"
+          frequency: "hourly"
+          seed: "{{ inputs.seed }}"
+          fruit_type: "{{ taskrun.value }}"
+          weather_seed_data: "{{ outputs.download_satellite_data.outputs.out_parquet }}"
+
+  - id: upload_satellite_data
+    type: io.kestra.plugin.gcp.gcs.Upload
+    from: "{{ outputs.download_satellite_data.outputs.out_parquet }}"
+    to: "gs://{{kv('GCP_BUCKET_NAME')}}/raw/satellite/monthly/satellite_data_{{ inputs.start_date | slice(0, 7) }}.parquet"

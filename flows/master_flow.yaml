@@ -1,0 +1,84 @@
+id: master_flow
+namespace: blueberry_cold_storage
+
+inputs:
+  - id: start_of_operations
+    type: STRING
+    description: "the month when the cold storage room started operating or recording data"
+    defaults: "2022-01-01"
+
+  # - id: start_date
+  #   type: STRING
+  #   description: "Start date of the month, e.g. 2022-01-01"
+  #   defaults: "{{ trigger.date ?? execution.startDate | dateAdd(-1, 'MONTHS') | date('yyyy-MM-dd') }}"
+
+  - id: frequency
+    type: STRING
+    defaults: "hourly"
+
+  - id: seed
+    type: INT
+    defaults: 42
+
+  - id: fruit_types
+    type: ARRAY
+    itemType: STRING
+    defaults: ["blueberry", "avocado"]
+    description: "List of fruits for which to generate data"
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      serviceAccount: "{{secret('GCP_SERVICE_ACCOUNT')}}"
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      bucket: "{{kv('GCP_BUCKET_NAME')}}"
+
+tasks:
+  - id: run_historical_backfill
+    type: io.kestra.plugin.core.flow.Subflow
+    flowId: backfill_historical
+    namespace: blueberry_cold_storage
+    wait: true
+    transmitFailed: true
+    runIf: "{{ kv('backfill_complete') == 'false' }}"
+    inputs:
+      start_of_operations: "{{ inputs.start_of_operations }}"
+      frequency: "{{ inputs.frequency }}"
+      seed: "{{ inputs.seed }}"
+      fruit_types: "{{ inputs.fruit_types }}"
+
+  - id: run_monthly_backfill_scheduled
+    type: io.kestra.plugin.core.flow.Subflow
+    flowId: backfill_monthly_scheduled
+    namespace: blueberry_cold_storage
+    wait: true
+    transmitFailed: true
+    runIf: "{{ kv('backfill_complete') == 'true' }}"
+    inputs:
+      start_date: "{{ trigger.date ?? execution.startDate | dateAdd(-1, 'MONTHS') | date('yyyy-MM-dd') }}"
+      frequency: "{{ inputs.frequency }}"
+      seed: "{{ inputs.seed }}"
+      fruit_types: "{{ inputs.fruit_types }}"
+
+  - id: create_raw_bq_tables
+    type: io.kestra.plugin.core.flow.Subflow
+    flowId: bq_setup
+    namespace: blueberry_cold_storage
+
+  - id: execute_dbt
+    type: io.kestra.plugin.core.flow.Subflow
+    flowId: dbt_build
+    namespace: blueberry_cold_storage
+
+  - id: mark_month_iteration_as_complete
+    type: io.kestra.plugin.core.kv.Set
+    runIf: "{{ kv('backfill_complete') == 'false' }}"
+    key: "backfill_complete"
+    value: "true"
+
+triggers:
+  - id: monthly_schedule
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 1 1 * *"  # 1am on the 1st of every month
+    timezone: America/New_York

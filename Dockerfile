@@ -1,5 +1,5 @@
 # base Docker image that we will build on
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Copy uv binary from official uv image (multi-stage build pattern)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/

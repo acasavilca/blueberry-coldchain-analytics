@@ -33,13 +33,13 @@ from respiration_data import RESPIRATION_DB
 # ----------------------------------
 # CONFIG
 # ----------------------------------
-STATE_PATH = Path(RUNTIME_CONFIG["state_path"])
-LOCAL_OUT = Path(RUNTIME_CONFIG["local_out_dir"])
+# STATE_PATH = Path(RUNTIME_CONFIG["state_path"])
+# LOCAL_OUT = Path(RUNTIME_CONFIG["local_out_dir"])
 # BUCKET_NAME = RUNTIME_CONFIG["bucket_name"]
-CHUNK_HOURS = RUNTIME_CONFIG["chunk_hours"]
-BACKFILL_MODE = RUNTIME_CONFIG["backfill_mode"]
+# CHUNK_HOURS = RUNTIME_CONFIG["chunk_hours"]
+# BACKFILL_MODE = RUNTIME_CONFIG["backfill_mode"]
 
-FRUIT_TYPE = TELEMETRY_CONFIG["fruit_type"]
+# FRUIT_TYPE = TELEMETRY_CONFIG["fruit_type"]
 # SEED = SIMULATION_CONFIG["seed"]
 
 def load_state():

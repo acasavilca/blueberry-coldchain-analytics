@@ -204,9 +204,18 @@ def prepare_forcing_arrays(df, resample_rate='1min'):
     df_resampled = (
         df.set_index('datetime')
           .resample(resample_rate)
-          .interpolate(method='time')
-          .reset_index()
+          .asfreq()
     )
+
+    # 2. SEPARATE: Isolate numeric columns (the ones that CAN be interpolated)
+    numeric_cols = df_resampled.select_dtypes(include=['number']).columns
+
+    # 3 INTERPOLATE: Only the numbers
+    df_resampled[numeric_cols] = df_resampled[numeric_cols].interpolate(method='time')
+
+    # 4. STITCH: Reset index to bring 'datetime' back as a column
+    df_resampled = df_resampled.reset_index()
+
     dt_arr = df_resampled['datetime'].to_numpy()
 
     forcing = {
@@ -1549,5 +1558,4 @@ def build_telemetry_table(
     })
 
     telemetry_df = telemetry_df.iloc[::10].reset_index(drop=True)
-
     return telemetry_df

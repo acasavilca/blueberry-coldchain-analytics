@@ -1,19 +1,19 @@
 id: global_email_alerts
-namespace: system_ops
+namespace: blueberry_cold_storage
 
 triggers:
   - id: watch_failures
     type: io.kestra.plugin.core.trigger.Flow
     conditions:
       - type: io.kestra.plugin.core.condition.ExecutionStatus
-        in: [FAILED]
+        in: [ FAILED ]
       - type: io.kestra.plugin.core.condition.ExecutionNamespace
         namespace: blueberry_cold_storage
         prefix: true
 
 tasks:
   - id: send_email_notification
-    type: io.kestra.plugin.notifications.mail.MailSend
+    type: io.kestra.plugin.email.MailSend
     from: "{{ kv('MY_GMAIL') }}"
     to: "{{ kv('MY_GMAIL') }}"
     subject: "Pipeline Failure: {{ trigger.flowId }}"
@@ -25,4 +25,4 @@ tasks:
       <h3>Workflow Failed</h3>
       <p><strong>Flow:</strong> {{ trigger.flowId }}</p>
       <p><strong>Execution ID:</strong> {{ trigger.executionId }}</p>
-      <p><a href="{{ trigger.executionUrl }}">Click here to view logs and troubleshoot.</a></p>
+      <p><a href="{{ trigger.executionId }}">Click here to view logs and troubleshoot.</a></p>

@@ -1,0 +1,11 @@
+[
+  {"name": "datetime", "type": "DATETIME", "mode": "NULLABLE"},
+  {"name": "T2M", "type": "FLOAT64", "mode": "NULLABLE"},
+  {"name": "RH2M", "type": "FLOAT64", "mode": "NULLABLE"},
+  {"name": "WS10M", "type": "FLOAT64", "mode": "NULLABLE"},
+  {"name": "ALLSKY_SFC_SW_DWN", "type": "FLOAT64", "mode": "NULLABLE"},
+  {"name": "T2MDEW", "type": "FLOAT64", "mode": "NULLABLE"},
+  {"name": "PS", "type": "FLOAT64", "mode": "NULLABLE"},
+  {"name": "TSOIL_54CM", "type": "FLOAT64", "mode": "NULLABLE"},
+  {"name": "loaded_at", "type": "TIMESTAMP", "mode": "NULLABLE"}
+]

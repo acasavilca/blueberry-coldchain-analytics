@@ -24,10 +24,18 @@ tasks:
     type: io.kestra.plugin.core.kv.Set
     key: GCP_DATASET
     kvType: STRING
-    value: raw_simulated_data
+    value: raw_dataset
 
   - id: gmail_address
     type: io.kestra.plugin.core.kv.Set
     key: MY_GMAIL
     kvType: STRING
     value: acasavilca@gmail.com
+
+  - id: init_backfill_flag
+    type: io.kestra.plugin.core.kv.Set
+    key: "backfill_complete"
+    kvType: STRING
+    value: 'false'
+
+

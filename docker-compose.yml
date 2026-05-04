@@ -11,7 +11,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: blueberry_ingest:v001
+    image: blueberry_simulator:v001
 
   kestra_postgres:
     image: postgres:18
@@ -86,9 +86,32 @@ services:
         sleep 3;
       done;
       echo 'Kestra is up, importing flows...';
-      for f in /flows/*.yml; do
+      for f in /flows/*.yml /flows/*.yaml; do
         echo Importing $$f;
         curl -sf -X POST -u 'admin@kestra.io:Admin123' -F fileUpload=@$$f 'http://kestra:8080/api/v1/flows/import?overwrite=true';
       done;
       echo 'Done importing flows.';
+      "
+  schema_importer:
+    profiles: ["dev"]
+    image: curlimages/curl:8.8.0
+    depends_on:
+      - kestra
+    volumes:
+      - ./schemas:/schemas:ro
+    entrypoint: >
+      sh -c "
+      until curl -sf http://kestra:8080; do
+        echo 'Waiting for Kestra...';
+        sleep 3;
+      done;
+      echo 'Kestra is up, importing schemas...';
+      for f in /schemas/*.json; do
+        filename=$(basename $$f);
+        curl -sf -X PUT -u 'admin@kestra.io:Admin123' \
+          -H 'Content-Type: application/octet-stream' \
+          --data-binary @$$f \
+          "http://kestra:8080/api/v1/namespaces/blueberry_cold_storage/files?path=/$$filename";
+      done;
+      echo 'Done importing schemas.';
       "
