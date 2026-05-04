@@ -37,7 +37,7 @@ clean-targets:         # directories to be removed by `dbt clean`
 # using the `{{ config(...) }}` macro.
 
 models:
-  dbt:
+  blueberry_cold_storage:
     staging:
       +schema: raw_dataset
     intermediate:
