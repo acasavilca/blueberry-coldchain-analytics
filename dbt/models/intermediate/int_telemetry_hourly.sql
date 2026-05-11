@@ -28,4 +28,3 @@ select
 
 from {{ ref('stg_telemetry') }}
 group by 1, 2, 3, 4, 5
-order by measured_hour_at

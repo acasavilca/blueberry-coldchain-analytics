@@ -23,7 +23,6 @@ with hourly_cop_data as (
 )
 
 select * from hourly_cop_data
-order by fruit_type desc, hour_at
 
 {% if is_incremental() %}
     where hour_at > (select max(hour_at) from {{ this }})

@@ -49,4 +49,3 @@ from hourly_telemetry tel
 left join hourly_satellite sat
 on tel.plant_id = sat.location_id
 and tel.measured_hour_at = sat.measured_at
-order by fruit_type desc, measured_hour_at
