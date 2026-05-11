@@ -1,13 +1,13 @@
 {{ config(
     materialized='incremental',
     partition_by={
-        'field': 'measured_hour_at',
+        'field': 'hour_at',
         'data_type': 'timestamp',
         'granularity': 'day'
     },
     cluster_by=['plant_id', 'fruit_type'],
     incremental_strategy='merge',
-    unique_key=['plant_id', 'fruit_type', 'measured_hour_at']
+    unique_key=['plant_id', 'fruit_type', 'hour_at']
 ) }}
 
 with hourly_cop_data as (
