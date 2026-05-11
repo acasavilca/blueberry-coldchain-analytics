@@ -1,7 +1,7 @@
 {{ config(
     materialized='incremental',
     partition_by={
-        'field': 'measured_at',
+        'field': 'measured_hour_at',
         'data_type': 'timestamp',
         'granularity': 'day'
     },

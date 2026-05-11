@@ -13,6 +13,12 @@ services:
       dockerfile: Dockerfile
     image: blueberry_simulator:v001
 
+  dbt:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbt
+    image: blueberry_dbt:v001
+
   kestra_postgres:
     image: postgres:18
     volumes:

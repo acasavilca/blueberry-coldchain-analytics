@@ -58,7 +58,7 @@ kv_*
 uv.lock
 data_out/
 *password*
-
+clean_dataset.sh
 # =========================
 # OS
 # =========================
