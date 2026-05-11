@@ -1,5 +1,7 @@
 {{ config(materialized='view') }}
 
+{% set timestamp_columns = ["arrived_at", "dispatched_first_at", "dispatched_final_at"] %}
+
 with source as (
     select * from {{ source('raw_data', 'batches') }}
 ),
@@ -11,11 +13,12 @@ renamed as (
         cast(batch_id as int64) as batch_id,
         cast(fruit_type as string) as fruit_type,
         cast(quality_grade as string) as quality_grade,
+        cast(timezone_id as string) as timezone_id,
 
         -- timestamps
-        cast(arrival_ts as datetime) as arrived_at,
-        cast(first_dispatch_ts as datetime) as dispatched_first_at,
-        cast(final_dispatch_ts as datetime) as dispatched_final_at,
+        cast(arrival_ts as timestamp) as arrived_at,
+        cast(first_dispatch_ts as timestamp) as dispatched_first_at,
+        cast(final_dispatch_ts as timestamp) as dispatched_final_at,
         cast(loaded_at as timestamp) as loaded_at,
 
         cast(mass_kg_initial as float64) as mass_kg_initial,
@@ -27,6 +30,9 @@ renamed as (
 deduplicated as (
     select
         *,
+        {% for timestamp_col in timestamp_columns %}
+        datetime({{timestamp_col}}, "America/New_York") as {{timestamp_col}}_localtime,
+        {% endfor %}
         row_number() over (
             partition by plant_id, batch_id
             order by loaded_at desc

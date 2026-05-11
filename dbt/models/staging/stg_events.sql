@@ -7,7 +7,8 @@ with source as (
 renamed as (
     select
         cast(plant_id as string) as plant_id,
-        cast(timestamp as datetime) as event_at,
+        cast(timezone_id as string) as timezone_id,
+        cast(timestamp as timestamp) as event_at,
         cast(loaded_at as timestamp) as loaded_at,
         cast(event_type as string) as event_type,
         cast(batch_id as int64) as batch_id,
@@ -21,6 +22,7 @@ renamed as (
 deduplicated as (
     select
         *,
+        datetime(event_at, timezone_id) as event_at_localtime,
         row_number() over (
             partition by plant_id, fruit_type, batch_id, event_at, event_type
             order by loaded_at desc

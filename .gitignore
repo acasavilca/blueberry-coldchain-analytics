@@ -48,7 +48,7 @@ blueberry_dbt/logs/
 # =========================
 # Project-specific
 # =========================
-notes*
+*notes*.txt
 ref_files/
 .old_*
 ref_*

@@ -11,7 +11,10 @@ import json
 from pytimeparse.timeparse import timeparse
 import base64
 import struct
-from config import MISSING_TSOIL_54CM, FRUIT_CONFIGS
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from timezonefinder import TimezoneFinder
+from config import MISSING_TSOIL_54CM, FRUIT_CONFIGS, WEATHER_DATASET_DTYPES
 from respiration_data import *
 
 ELEVATION_CACHE_PATH = Path("elevation_cache.json")
@@ -21,7 +24,17 @@ ELEVATION_CACHE_PATH = Path("elevation_cache.json")
 # TARGET_RH = FRUIT_CONFIGS[FRUIT_TYPE]["target_rh"]
 # SETPOINT = FRUIT_CONFIGS[FRUIT_TYPE]["setpoint"]
 # CP_FRUIT = FRUIT_CONFIGS[FRUIT_TYPE]["Cp_fruit"]
-    
+
+def get_timezone_name(latitude, longitude):
+    tf = TimezoneFinder()
+    return tf.timezone_at(lng=longitude, lat=latitude) 
+
+def get_timezone_transitions(year, zone_name):
+    tz = ZoneInfo(zone_name)
+    for d in range(365):
+        dt = datetime(year, 1, 1) + timedelta(days=d)
+        if dt.replace(tzinfo=tz).dst() != (dt + timedelta(days=1)).replace(tzinfo=tz).dst():
+            print(f"Transition on: {dt.date()}")
 
 def encode_coordinates(lat: float, lon: float) -> str:
     """Converts lat/lon floats into a short URL-safe string key."""
@@ -116,6 +129,7 @@ def retrieve_satellite_data(
     frequency="hourly",
     # is_historical=True,
 ):
+    location_id = encode_coordinates(latitude, longitude)
     
     historical = "https://historical-forecast-api.open-meteo.com/v1/forecast"
     forecast ="https://api.open-meteo.com/v1/forecast"
@@ -145,13 +159,17 @@ def retrieve_satellite_data(
 
     print(f"Using {base_url} endpoint based on selected date range and current date.")
 
-    start_dt, end_dt = start_dt.strftime('%Y-%m-%d'), end_dt.strftime('%Y-%m-%d')
+    # start_dt, end_dt = start_dt.strftime('%Y-%m-%d'), end_dt.strftime('%Y-%m-%d')
+    next_day_midnight = (end_dt + pd.Timedelta(days=1)).normalize()
+
+    start_hour = start_dt.strftime("%Y-%m-%dT%H:%M")
+    end_hour = next_day_midnight.strftime("%Y-%m-%dT%H:%M")
 
     params = {
-        "start_date": start_dt,
-        "end_date": end_dt,
-        "latitude": latitude,
-        "longitude": longitude,
+        "start_hour": start_hour,
+        "end_hour": end_hour,
+        "latitude": str(latitude),
+        "longitude": str(longitude),
         frequency: measurements,
         "wind_speed_unit": "ms",
         "timezone": timezone,
@@ -190,6 +208,12 @@ def retrieve_satellite_data(
     df.loc[df["TSOIL_54CM"].isna(), "TSOIL_54CM"] = fill_value + noise
 
     df['PS'] /= 10.0 # hPa to kPa
+    
+    ##
+    df['latitude'], df['longitude'] = latitude, longitude
+    ##
+    
+    df['location_id'] = location_id
 
     datetime_cols = dtypes['DATETIME_COLS']
     df[datetime_cols] = df[datetime_cols].apply(
@@ -201,6 +225,9 @@ def retrieve_satellite_data(
     return df.astype(dtypes)    
 
 def prepare_forcing_arrays(df, resample_rate='1min'):
+    latitude = df['latitude'][0]
+    longitude = df['longitude'][0]
+    df = df.drop(columns=['latitude', 'longitude'])
     df_resampled = (
         df.set_index('datetime')
           .resample(resample_rate)
@@ -215,6 +242,9 @@ def prepare_forcing_arrays(df, resample_rate='1min'):
 
     # 4. STITCH: Reset index to bring 'datetime' back as a column
     df_resampled = df_resampled.reset_index()
+
+    # clip the last row, which corresponds to midnight of day after end date and was used for interpolation
+    df_resampled = df_resampled[:-1]
 
     dt_arr = df_resampled['datetime'].to_numpy()
 
@@ -242,7 +272,28 @@ def prepare_forcing_arrays(df, resample_rate='1min'):
         'T2MDEW': df_resampled['T2MDEW'].to_numpy(np.float64),
         'TSOIL_54CM': df_resampled['TSOIL_54CM'].to_numpy(np.float64),
     }
-    return forcing, df_resampled, float(timeparse(resample_rate))
+
+    zone_name = get_timezone_name(latitude, longitude)
+    localtime_series = df_resampled['datetime'].dt.tz_localize('UTC').dt.tz_convert(zone_name)
+    localtime_arr = localtime_series.dt.tz_localize(None).values
+
+    localtime_reference = {
+        # full datetime, for Python-side scheduling / labeling / storage
+        'dt_arr': localtime_arr,
+
+        # Numba-friendly calendar fields
+        'year':  localtime_arr.astype('datetime64[Y]').astype(np.int64) + 1970,
+        'month': (localtime_arr.astype('datetime64[M]').astype(np.int64) % 12) + 1,
+        'day':   (localtime_arr.astype('datetime64[D]') - localtime_arr.astype('datetime64[M]')).astype(np.int64) + 1,
+        'hour':  (localtime_arr.astype('datetime64[h]').astype(np.int64) % 24),
+        'minute': (localtime_arr.astype('datetime64[m]').astype(np.int64) % 60),
+        'second': (localtime_arr.astype('datetime64[s]').astype(np.int64) % 60),
+        # 'day_of_year': (
+        #     dt_arr.astype('datetime64[D]') - localtime_arr.astype('datetime64[Y]')
+        # ).astype(np.int64) + 1
+    }
+
+    return forcing, localtime_reference, df_resampled, float(timeparse(resample_rate))
 
 def get_tr(respiration_database, fruit):
     df = (
@@ -330,15 +381,14 @@ def w_from_partial_pressure(P_w, P):
     return W
 
 @njit
-def compressor_metrics(T_room, T_ambient, eta, Q_cooling):
+def compressor_metrics(T_coil_evap, T_ambient, eta, Q_cooling_actual_w):
     ## COP and compressor power
-    T_evap_K = (T_room - 8) + 273.15      # evaporator 8°C below setpoint
+    T_evap_K = T_coil_evap + 273.15      # evaporator 8°C below setpoint
     T_cond_K = (T_ambient + 12) + 273.15    # condenser 12°C above ambient
-    COP_carnot = T_evap_K / (T_cond_K - T_evap_K)
-    COP_actual = COP_carnot * eta
+    COP_carnot = T_evap_K / max(T_cond_K - T_evap_K, 0.0)
     COP_actual = max(COP_carnot * eta, 0.5)  # floor at 0.5, physically unreachable below this
-    W_compressor_kw = Q_cooling / (COP_actual * 1000)
-    Q_condenser_kw = W_compressor_kw + Q_cooling/1000
+    W_compressor_kw = (Q_cooling_actual_w/1000) / COP_actual
+    Q_condenser_kw = W_compressor_kw + (Q_cooling_actual_w/1000)
     return COP_actual, W_compressor_kw, Q_condenser_kw
 
 @njit
@@ -816,15 +866,14 @@ def run_simulation_chunk(
     k_fans,
     U_wall,
     U_floor,
-    # T_ground,
     Q_rated,
+    TD_design,
     f_structure,
     k_wind_U,
     Cp_air,
     T_lookup,
     R_lookup,
     BF,
-    T_coil_ref,
     n_ach_eff_per_sec,
 
     h_respiration,
@@ -879,8 +928,6 @@ def run_simulation_chunk(
 
     timestep,
 
-    m_dot_evap_air_kg_s,
-
     eps,
 
     h_i_walls,
@@ -906,7 +953,9 @@ def run_simulation_chunk(
     n = len(T_ambient_arr)
 
     cooling_frac = cooling_frac_init
-    # A_walls_ceiling = 2 * (L * H) + 2 * (W * H) + (L * W)
+    
+    UA_coil_evap = Q_rated/TD_design
+    m_dot_air_evap = UA_coil_evap / (Cp_air*(1 - BF))
 
     # Internal wall connected to the plant
     A_wall_internal = W * H
@@ -1004,13 +1053,10 @@ def run_simulation_chunk(
     W_compressor_kw_arr = np.empty(n_total, dtype=np.float64)
     Q_condenser_kw_arr = np.empty(n_total, dtype=np.float64)
     Q_cooling_w_arr = np.empty(n_total, dtype=np.float64)
-
-    T_evap_in_air_arr = np.empty(n_total, dtype=np.float64)
-    T_evap_out_air_arr = np.empty(n_total, dtype=np.float64)
-    W_evap_in_arr = np.empty(n_total, dtype=np.float64)
-    W_evap_out_arr = np.empty(n_total, dtype=np.float64)
-    m_dot_evap_air_arr = np.empty(n_total, dtype=np.float64)
+    T_coil_evap_arr = np.empty(n_total, dtype=np.float64)
+    T_evap_out_arr = np.empty(n_total, dtype=np.float64)
     RH_evap_out_arr = np.empty(n_total, dtype=np.float64)
+    m_dot_air_evap_arr = np.empty(n_total, dtype=np.float64)
 
     fruit_mass_kg_arr = np.empty(n_total, dtype=np.float64)
 
@@ -1023,8 +1069,6 @@ def run_simulation_chunk(
     door_ext_open_fraction = 0.0
     door_int_open_fraction = 0.0
 
-    
-
     for i in range(n):
         T_ambient = T_ambient_arr[i]
         RH_ambient = RH_ambient_arr[i]
@@ -1034,9 +1078,12 @@ def run_simulation_chunk(
         T2MDEW = T2MDEW_arr[i]
         T_ground = T_ground_arr[i]
 
-        if hour_arr[i] == 0 and minute_arr[i] == 0 and second_arr[i] == 0:
+        if i == 0: # hour_arr[i] == 0 and minute_arr[i] == 0 and second_arr[i] == 0:
             eta = manual_clipping(np.random.normal(0.55, 0.02), 0.40, 0.70)
             total_water_loss_kg = 0.0
+            P_sat_coil = p_sat_magnus(T_room)
+            W_coil_sat = w_from_partial_pressure(P_sat_coil, P_Pa)
+            # T_coil_evap = T_room - TD_design # T_room - (Q_rated / UA_coil_evap) 
 
         delta_mass = fruit_mass_delta_kg[i]
 
@@ -1123,7 +1170,7 @@ def run_simulation_chunk(
             else:
                 rh_deadband_eff = rh_deadband
 
-            if RH_room_sensor < (target_rh - rh_deadband_eff *.33):
+            if RH_room_sensor < (target_rh - rh_deadband_eff):           # *.33
                 humidifier_call = True
             elif RH_room_sensor > (target_rh + rh_deadband_eff):
                 humidifier_call = False
@@ -1159,21 +1206,8 @@ def run_simulation_chunk(
             Q_fans = k_fans * Q_rated
             # Q_solar = alpha_roof * GHI * A_floor
 
-            # cooling
-            # outputs_dict_empty, calls_dict_empty = create_numba_dicts()
-            Q_cooling_actual = Q_rated * (1.0 - 0.007 * (T_ambient - 35.0))
-            Q_cooling = Q_cooling_actual * cooling_frac
-
-            # optional compressor metrics if needed for output only
-            Q_total_evap = Q_cooling
-            COP_actual, W_compressor_kw, Q_condenser_kw = compressor_metrics(T_room, T_ambient, eta, Q_total_evap)
-
-            # coil latent removal
-            T_coil = T_coil_ref + BF * (T_room - T_coil_ref)
-            P_sat_coil = p_sat_magnus(T_coil)
-            W_coil_sat = w_from_partial_pressure(P_sat_coil, P_Pa)
-
-            # W_evap_out = BF * W_room + (1.0 - BF) * W_coil_sat ## Added for 'industrial' COP calculation
+            # calculate the capacity limit: how much the machine can do based on the weather
+            Q_cooling_capacity = Q_rated * (1.0 - 0.007 * (T_ambient - 35.0)) * cooling_frac
 
             if cooling_frac > 0.0 and W_room > W_coil_sat:
                 condense_call = True
@@ -1184,9 +1218,40 @@ def run_simulation_chunk(
             condense_frac += (target_condense - condense_frac) * dt_internal / tau_condense
             condense_frac = manual_clipping(condense_frac, 0.0, 1.0)
 
-            m_removed = condense_frac * (1.0 - BF) * (Q_cooling / h_fg)
-            Q_latent_removed = m_removed * h_fg # Energy "spent" on turning vapor into liquid water
-            Q_sensible_cooling = max(Q_total_evap - Q_latent_removed, 0.0) # Energy "left over" to actually cool the air
+            # condense_frac is a lag variable representing the thermal inertia of condensation process
+            # unlike coooling_frac, it has no independent existence without the compressor running
+            # when coooling_frac = 0, coil_surface is equal to room temperature, so condensation should stop immediately
+            m_removed = m_dot_air_evap * (1.0 - BF) * max(W_room - W_coil_sat, 0.0) * condense_frac
+            m_removed *= (1.0 if cooling_frac > 0.0 else 0.0)
+            Q_cooling_latent = m_removed * h_fg
+
+            # calculate the physics demand: how much the machine wants to do based on the air state
+            
+            # 1. Define the heat transfer potential (k)
+            k_transfer = m_dot_air_evap * (1.0 - BF) * Cp_air * cooling_frac
+            
+            if k == 0:
+                T_coil_evap = T_room - (Q_cooling_capacity / max(UA_coil_evap, 1e-6))
+
+            Q_cooling_sensible = k_transfer * (T_room - T_coil_evap)
+            
+            # reality_check
+            Q_cooling_actual = min(Q_cooling_sensible + Q_cooling_latent, Q_cooling_capacity)
+
+            T_coil_evap = T_room - (Q_cooling_capacity / UA_coil_evap) if cooling_frac > 0.0 else T_room
+
+            # optional compressor metrics if needed for output only
+            COP_actual, W_compressor_kw, Q_condenser_kw = compressor_metrics(T_coil_evap, T_ambient, eta, Q_cooling_actual)
+ 
+            # Air State Leaving the Coil
+            T_outlet_air = T_coil_evap + BF * (T_room - T_coil_evap) ## DEBUG
+            
+            # Humidity State for the NEXT step
+            P_sat_coil = p_sat_magnus(T_coil_evap)
+            W_coil_sat = w_from_partial_pressure(P_sat_coil, P_Pa)
+            
+            # Derive fake telemetry data for 'real-life' COP calculation from Q_sensible_cooling
+            # Q_sensible_cooling = m_dot * Cp_air * (T_in - T_out)
 
             # effective room air capacity
             C_air = V_free * rho_air_room * Cp_air
@@ -1277,9 +1342,8 @@ def run_simulation_chunk(
                 + Q_floor
                 + Q_fans
                 + Q_fruit_exchange
-                # + Q_solar
                 + Q_inf_sens_ext + Q_inf_sens_int
-                - Q_sensible_cooling
+                - Q_cooling_sensible
                 - Q_humidifier_cooling
             ) / C_room
 
@@ -1353,6 +1417,12 @@ def run_simulation_chunk(
             P_sat_room = p_sat_magnus(T_room)
             RH_room = manual_clipping(P_w_room / P_sat_room, 0.0, 1.0)
 
+            # Calculate RH_evap_out for 'real-life' telemetry
+            W_evap_out = BF * W_room + (1.0 - BF) * W_coil_sat
+            P_w_evap_out = partial_pressure_from_w(W_evap_out, P_Pa)
+            P_sat_evap_out = p_sat_magnus(T_outlet_air)
+            RH_evap_out = manual_clipping(P_w_evap_out / P_sat_evap_out, 0.0, 1.0)
+
             # =========================================================
             # 9. SENSOR UPDATES
             # =========================================================
@@ -1390,19 +1460,12 @@ def run_simulation_chunk(
             COP_arr[k] = COP_actual
             W_compressor_kw_arr[k] = W_compressor_kw
             Q_condenser_kw_arr[k] = Q_condenser_kw
-            Q_cooling_w_arr[k] = Q_cooling
-
-            T_evap_in_air_arr[k] = T_room
-            T_evap_out_air_arr[k] = T_coil
-            W_evap_in_arr[k] = W_room
-            W_evap_out_arr[k] = BF * W_room + (1.0 - BF) * W_coil_sat
-            m_dot_evap_air_arr[k] = m_dot_evap_air_kg_s
-
-            RH_evap_out_arr[k] = manual_clipping(
-                partial_pressure_from_w(BF * W_room + (1.0 - BF) * W_coil_sat, P_Pa) / p_sat_magnus(T_coil),
-                0.0,
-                1.0
-            )
+            Q_cooling_w_arr[k] = Q_cooling_actual
+            
+            T_coil_evap_arr[k] = T_coil_evap
+            T_evap_out_arr[k] = T_outlet_air
+            RH_evap_out_arr[k] = RH_evap_out
+            m_dot_air_evap_arr[k] = m_dot_air_evap
 
             fruit_mass_kg_arr[k] = fruit_mass_kg
 
@@ -1442,12 +1505,13 @@ def run_simulation_chunk(
     float64_dict['Q_condenser_kw'] = Q_condenser_kw_arr
     float64_dict['Q_cooling_w'] = Q_cooling_w_arr
 
-    float64_dict['T_evap_in_air'] = T_evap_in_air_arr
-    float64_dict['T_evap_out_air'] = T_evap_out_air_arr
-    float64_dict['W_evap_in'] = W_evap_in_arr
-    float64_dict['W_evap_out'] = W_evap_out_arr
-    float64_dict['m_dot_evap_air_kg_s'] = m_dot_evap_air_arr
+    float64_dict['T_coil_evap'] = T_coil_evap_arr
+
+    float64_dict['T_evap_in'] = T_sensor_arr
+    float64_dict['T_evap_out'] = T_evap_out_arr
+    float64_dict['RH_evap_in'] = RH_room_sensor_arr
     float64_dict['RH_evap_out'] = RH_evap_out_arr
+    float64_dict['m_dot_air_evap'] = m_dot_air_evap_arr
 
     float64_dict["fruit_mass_kg"] = fruit_mass_kg_arr
 
@@ -1477,6 +1541,17 @@ def build_telemetry_table(
     assert len(outputs_dict['T_sensor']) == n, f"T_sensor {len(outputs_dict['T_sensor'])} != datetime {n}"
     assert len(outputs_dict['T_pulp']) == n, f"T_pulp {len(outputs_dict['T_pulp'])} != datetime {n}"
     assert len(calls_dict['cooling_call']) == n, f"cooling_call {len(calls_dict['cooling_call'])} != datetime {n}"
+    assert len(outputs_dict['T_room']) == n, f"T_room {len(outputs_dict['T_room'])} != datetime {n}"
+    assert len(outputs_dict['RH_room']) == n, f"RH_room {len(outputs_dict['RH_room'])} != datetime {n}"
+    assert len(outputs_dict['RH_room_sensor']) == n, f"RH_room_sensor {len(outputs_dict['RH_room_sensor'])} != datetime {n}"
+    assert len(outputs_dict['CO2_ppm']) == n, f"CO2_ppm {len(outputs_dict['CO2_ppm'])} != datetime {n}"
+    assert len(outputs_dict['O2_pct']) == n, f"O2_pct {len(outputs_dict['O2_pct'])} != datetime {n}"
+    assert len(outputs_dict['W_compressor_kw']) == n, f"W_compressor_kw {len(outputs_dict['W_compressor_kw'])} != datetime {n}"
+    assert len(outputs_dict['T_evap_out']) == n, f"T_evap_out {len(outputs_dict['T_evap_out'])} != datetime {n}"
+    assert len(outputs_dict['RH_evap_out']) == n, f"RH_evap_out {len(outputs_dict['RH_evap_out'])} != datetime {n}"
+    assert len(outputs_dict['m_dot_air_evap']) == n, f"m_dot_air_evap {len(outputs_dict['m_dot_air_evap'])} != datetime {n}"
+    assert len(outputs_dict['T_coil_evap']) == n, f"T_coil_evap {len(outputs_dict['T_coil_evap'])} != datetime {n}"
+    assert len(calls_dict['humidifier_call']) == n, f"humidifier_call {len(calls_dict['humidifier_call'])} != datetime {n}"
 
     ## Add noise to simulation outputs
     new_seed = (telemetry_dt_arr[0].astype('int64') + telemetry_dt_arr[5].astype('int64')) + seed
@@ -1487,7 +1562,7 @@ def build_telemetry_table(
 
     T_room = outputs_dict['T_sensor']
     sigma_T_room = np.where(cooling_call == 1, 0.08, 0.15)
-    T_room_noisy = T_room + rng.normal(0.0, sigma_T_room)
+    T_room_noisy = T_room + rng.normal(0.0, sigma_T_room, size=T_room.shape)
 
     T_pulp = outputs_dict['T_pulp']
     sigma_T_pulp = .04 # 0.15
@@ -1496,8 +1571,8 @@ def build_telemetry_table(
     RH_room_frac = outputs_dict['RH_room_sensor']
     RH_room_pct = RH_room_frac * 100.0
     sigma_RH_room_pct = 0.5 + f_RH_noise * np.maximum(0.0, (RH_room_pct - 85.0) / 15.0)
-    RH_room_noisy_pct = RH_room_pct + rng.normal(0.0, sigma_RH_room_pct, size=RH_room_pct.shape)
-    RH_room_noisy = np.clip(RH_room_noisy_pct / 100.0, 0.0, 1.0)
+    RH_room_pct_noisy = RH_room_pct + rng.normal(0.0, sigma_RH_room_pct, size=RH_room_pct.shape)
+    RH_room_pct_noisy = np.clip(RH_room_pct_noisy, 0.0, 100.0)
 
     CO2_ppm = outputs_dict['CO2_ppm']
     sigma_CO2_ppm = 0.005*CO2_ppm + 1.0
@@ -1514,48 +1589,70 @@ def build_telemetry_table(
     W_compressor_kw_noisy = W_compressor_kw + rng.normal(0.0, sigma_W_compressor_kw, size=W_compressor_kw.shape)
     W_compressor_kw_noisy = np.maximum(W_compressor_kw_noisy, 0.0)
 
-    T_evap_in_air = outputs_dict['T_evap_in_air']
-    sigma_T_evap_in_air = np.where(cooling_call == 1, 0.08, 0.15)
-    T_evap_in_air_noisy = T_evap_in_air + rng.normal(0.0, sigma_T_evap_in_air, size=T_evap_in_air.shape)
+    T_evap_in = outputs_dict['T_room']
+    sigma_T_evap_in = np.where(cooling_call == 1, 0.08, 0.15)
+    T_evap_in_noisy = T_evap_in + rng.normal(0.0, sigma_T_evap_in, size=T_evap_in.shape)
 
-    T_evap_out_air = outputs_dict['T_evap_out_air']
-    sigma_T_evap_out_air = np.where(cooling_call == 1, 0.10, 0.18)
-    T_evap_out_air_noisy = T_evap_out_air + rng.normal(0.0, sigma_T_evap_out_air, size=T_evap_out_air.shape)
+    T_evap_out = outputs_dict['T_evap_out']
+    sigma_T_evap_out = np.where(cooling_call == 1, 0.10, 0.18)
+    T_evap_out_noisy = T_evap_out + rng.normal(0.0, sigma_T_evap_out, size=T_evap_out.shape)
 
-    m_dot_evap_air_kg_s = outputs_dict['m_dot_evap_air_kg_s']
-    sigma_m_dot_evap_air = np.maximum(0.03 * m_dot_evap_air_kg_s, 0.05)
-    m_dot_evap_air_kg_s_noisy = (
-        m_dot_evap_air_kg_s
-        + rng.normal(0.0, sigma_m_dot_evap_air, size=m_dot_evap_air_kg_s.shape)
+    RH_evap_in_frac = outputs_dict['RH_room']
+    RH_evap_in_pct = RH_evap_in_frac * 100.0
+    sigma_RH_evap_in_pct = 0.5 + f_RH_noise * np.maximum(0.0, (RH_evap_in_pct - 85.0) / 15.0)
+    RH_evap_in_pct_noisy = RH_evap_in_pct + rng.normal(0.0, sigma_RH_evap_in_pct, size=RH_evap_in_pct.shape)
+    RH_evap_in_pct_noisy = np.clip(RH_evap_in_pct_noisy, 0.0, 100.0)
+
+    RH_evap_out_frac = outputs_dict['RH_evap_out']
+    RH_evap_out_pct = RH_evap_out_frac * 100.0
+    sigma_RH_evap_out_pct = np.where(cooling_call == 1, 0.8, 0.5) + f_RH_noise * np.maximum(0, (RH_evap_out_pct - 85.0)/15.0)
+    RH_evap_out_pct_noisy = RH_evap_out_pct + rng.normal(0.0, sigma_RH_evap_out_pct, size=RH_evap_out_pct.shape)
+    RH_evap_out_pct_noisy = np.clip(RH_evap_out_pct_noisy, 0.0, 100.0)
+
+    T_coil_evap = outputs_dict['T_coil_evap']
+    sigma_T_coil_evap = np.where(cooling_call == 1, 0.05, 0.15)
+    T_coil_evap_noisy = T_coil_evap + rng.normal(0.0, sigma_T_coil_evap)
+
+    m_dot_air_evap = outputs_dict['m_dot_air_evap']
+    sigma_m_dot_air_evap = np.maximum(0.03 * m_dot_air_evap, 0.05)
+    m_dot_air_evap_noisy = (
+        m_dot_air_evap
+        + rng.normal(0.0, sigma_m_dot_air_evap, size=m_dot_air_evap.shape)
     )
-    m_dot_evap_air_kg_s_noisy = np.maximum(m_dot_evap_air_kg_s_noisy, 0.1)
-
-    RH_evap_out = outputs_dict['RH_evap_out']
-    sigma_RH_evap_out = 0.5 + f_RH_noise * np.maximum(0, (RH_evap_out * 100.0 - 85.0)/15.0)
-    RH_evap_out_noisy = RH_evap_out + rng.normal(0.0, sigma_RH_evap_out / 100.0, size=RH_evap_out.shape)
-    RH_evap_out_noisy = np.clip(RH_evap_out_noisy, 0.0, 1.0)
 
     telemetry_df = pd.DataFrame({
         'plant_id': [plant_id] * n,
         'datetime': datetimes,
-
-        'T_room': T_room_noisy,
-        'T_pulp': T_pulp_noisy,
-        'RH_room': RH_room_noisy,
-        'CO2_ppm': CO2_ppm_noisy,
-        'O2_pct': O2_pct_noisy,
-        'W_compressor_kw': W_compressor_kw_noisy,
-
-        'T_evap_in_air': T_evap_in_air_noisy,
-        'T_evap_out_air': T_evap_out_air_noisy,
-        'RH_evap_out': RH_evap_out_noisy,
-        'm_dot_evap_air_kg_s': m_dot_evap_air_kg_s_noisy,
-
-        'cooling_call': cooling_call,
-        'humidifier_call': humidifier_call,
-
+        'temp_room_c': T_room_noisy,
+        'temp_pulp_c': T_pulp_noisy,
+        'rh_room_pct': RH_room_pct_noisy,
+        'co2_ppm': CO2_ppm_noisy,
+        'o2_pct': O2_pct_noisy,
+        'power_compressor_kw': W_compressor_kw_noisy,
+        'temp_evap_inlet_c': T_evap_in_noisy,
+        'temp_evap_outlet_c': T_evap_out_noisy,
+        'rh_evap_inlet_pct': RH_evap_in_pct_noisy,
+        'rh_evap_outlet_pct': RH_evap_out_pct_noisy,
+        'airflow_evap_kg_s': m_dot_air_evap_noisy,
+        'temp_coil_suction_c': T_coil_evap_noisy,
+        'compressor_on': cooling_call,
+        'humidifier_on': humidifier_call,
         'fruit_type': fruit_type,
     })
+    
+    round_spec = {
+        'temp_room_c': 2, 'temp_pulp_c': 2, 'temp_evap_inlet_c': 2,
+        'temp_evap_outlet_c': 2, 'temp_coil_suction_c': 2,
+        'rh_room_pct': 2, 'rh_evap_inlet_pct': 2, 'rh_evap_outlet_pct': 2,
+        'power_compressor_kw': 4, 'airflow_evap_kg_s': 4,
+        'co2_ppm': 1, 'o2_pct': 3,
+    }
 
     telemetry_df = telemetry_df.iloc[::10].reset_index(drop=True)
+    telemetry_df = telemetry_df.round(round_spec)
     return telemetry_df
+
+def fix_timestamps(df):
+    for col in df.select_dtypes(include='datetime64[ns]').columns:
+        df[col] = df[col].astype('datetime64[us]')
+    return df

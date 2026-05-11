@@ -6,21 +6,33 @@ with source as (
 
 renamed as (
     select
-        cast(datetime as datetime) as measured_at,
+        -- identifiers
+        cast(location_id as string) as location_id,
+        cast(timezone_id as string) as timezone_id,
+
+        -- coordinates
+        cast(latitude as float64) as latitude,
+        cast(longitude as float64) as longitude,
+
+        -- timestamps
+        cast(datetime as timestamp) as measured_at,
         cast(loaded_at as timestamp) as loaded_at,
-        cast(T2M as float64) as temp_2m,
-        cast(RH2M as float64) as rh_2m,
+
+        -- telemetry
+        cast(T2M as float64) as temp_2m_c,
+        cast(RH2M as float64) as rh_2m_pct,
         cast(WS10M as float64) as wind_speed_10m,
-        cast(ALLSKY_SFC_SW_DWN as float64) as shortwave_radiation,
-        cast(T2MDEW as float64) as dew_point_2m,
-        cast(PS as float64) as pressure,
-        cast(TSOIL_54CM as float64) as t_soil_54cm
+        cast(ALLSKY_SFC_SW_DWN as float64) as shortwave_radiation_w_m2,
+        cast(T2MDEW as float64) as dew_point_2m_c,
+        cast(PS as float64) as pressure_kpa,
+        cast(TSOIL_54CM as float64) as temp_soil_54cm_c
     from source
 ),
 
 deduplicated as (
     select
         *,
+        datetime(measured_at, timezone_id) as measured_at_localtime,
         row_number() over (
             partition by measured_at
             order by loaded_at desc

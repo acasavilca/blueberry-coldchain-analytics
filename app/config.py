@@ -1,6 +1,6 @@
 import numpy as np
 
-SEED = 42
+# SEED = 42
 FRUIT_TYPE = "blueberry"
 LATITUDE = -8.5771
 LONGITUDE = -78.5661
@@ -8,13 +8,13 @@ RESAMPLE_RATE = "1min"
 DT_INTERNAL = 1.0 # 10.0
 
 LOCATION = {
-    "latitude": str(LATITUDE),
-    "longitude": str(LONGITUDE),
+    "latitude": LATITUDE,
+    "longitude": LONGITUDE,
 }
 
 RETRIEVAL_CONFIG = {
     "measurements": "temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation,dewpoint_2m,surface_pressure,soil_temperature_54cm",
-    "timezone": "auto",
+    "timezone": None, # "auto",
 }
 
 FORCING_CONFIG = {
@@ -40,7 +40,7 @@ SIMULATION_CONFIG = {
     "U_wall": 0.225,
     "U_floor": 0.75,
     # "T_ground": 19.0,
-    "Q_rated": 22_000.0,
+    # "Q_rated": 22_000.0,
     "f_structure": 0.05,
     "k_wind_U": 0.02,
     "Cp_air": 1006.0,
@@ -70,14 +70,14 @@ SIMULATION_CONFIG = {
     "M_air": 28.97,
 
     # coil / humidity control
-    "T_coil_ref": -2.0,
+    # "T_coil_ref": -2.0,
     "BF": 0.20, # 0.5, # 0.2,
     "tau_condense": 30.0, # 120.0, # 15.0,   # replace if you settled on another final value
     # "target_rh": .965, # 0.95,
     "rh_deadband": 0.02,
     "tau_humid_frac": 180.0, # 180.0, # 180.0, # 60.0,
     "tau_humid_sensor": 300.0, # 300.0, # 10.0, # 10.0,
-    "m_max": 0.0008, # 0.003,
+    # "m_max": 0.0008, # 0.003,
     "f_evap_humid": 0.95, # 0.4,
     
     # transpiration
@@ -123,7 +123,7 @@ SIMULATION_CONFIG = {
     "k_door_ext": .3, # .2,
     "k_door_int": .2, # .2,
 
-    "m_dot_evap_air_kg_s": 5.0,
+    # "m_dot_evap_air_kg_s": 5.0,
 
     "eps": 1e-5,
 
@@ -159,11 +159,15 @@ WEATHER_DATASET_DTYPES = {
         "T2MDEW": "float64",
         "PS": "float64",
         "TSOIL_54CM": "float64",
+        "latitude": "float64",
+        "longitude": "float64",
+        "location_id": "string",
     },
     "DATETIME_COLS": [
         "datetime",
     ],
 }
+
 MISSING_TSOIL_54CM = {
         "2022": 27.70745528136833,
         "2021": 27.803116438356163,
@@ -171,12 +175,13 @@ MISSING_TSOIL_54CM = {
 
 FRUIT_CONFIGS = {
     "blueberry": {
+        "seed": 42,
         "tunnel_exit_fruit_temp": -1.0,
-        "target_rh": 0.965,
+        "target_rh": 0.9125,
+        "m_max": 0.0008,
         "setpoint": 0.0,
         "Cp_fruit": 3640.0,
         "k_p": 2.5e-10,
-        "T_coil_ref": -2.0,
         "monthly_weight": [0.15, 0.10, 0.08, 0.08, 0.12, 0.25,
                            0.50, 0.85, 1.15, 1.40, 1.30, 0.80],
         "yearly_weight": {
@@ -187,14 +192,17 @@ FRUIT_CONFIGS = {
             2025: 1.18,   # record +57% recovery
             2026: 1.17,   # ~flat, slight dip
         },
+        "Q_rated": 22_000.0, # W # 22_000.0
+        "TD_design": 2.0, # 3.0
     },
     "avocado": {
+        "seed": 333,
         "tunnel_exit_fruit_temp": 6.0,  # pre-cooled to ~6°C before cold storage
-        "target_rh": 0.92,
-        "setpoint": 5.0,
+        "target_rh": 0.90,
+        "m_max": 0.0008,
+        "setpoint": 5.5,
         "Cp_fruit": 3010.0,  # from USDA specific heat tables
         "k_p": 4.0e-10,  # avocados transpire more due to higher oil content
-        "T_coil_ref": 3.0,
         "monthly_weight": [0.10, 0.15, 0.30, 0.60, 1.20, 1.40,
                            1.40, 1.20, 0.60, 0.30, 0.15, 0.10],
         # peaks May-Aug per ProHass/USDA data: 74% of yearly exports
@@ -206,5 +214,7 @@ FRUIT_CONFIGS = {
             2025: 1.73,   # record +38%
             2026: 1.83,   # +6% projected
         },
+        "Q_rated": 22_000.0, # W
+        "TD_design": 3.0,
     },
 }
