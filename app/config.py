@@ -171,7 +171,7 @@ FRUIT_CONFIGS = {
         "Cp_fruit": 3640.0,
         "k_zone_ref": 9.6e-5,
         "k_p": 2.5e-10,
-        "monthly_weight": [0.15, 0.10, 0.08, 0.08, 0.12, 0.25,
+        "monthly_weight": [0.22, 0.18, 0.13, 0.10, 0.12, 0.25,
                            0.50, 0.85, 1.15, 1.40, 1.30, 0.80],
         "yearly_weight": {
         # Blueberry - normalized to 2022 baseline
@@ -193,7 +193,7 @@ FRUIT_CONFIGS = {
         "Cp_fruit": 3010.0,  # from USDA specific heat tables
         "k_zone_ref": 6.4e-5,
         "k_p": 4.0e-10,  # avocados transpire more due to higher oil content
-        "monthly_weight": [0.10, 0.15, 0.30, 0.60, 1.20, 1.40,
+        "monthly_weight": [0.18, 0.22, 0.38, 0.65, 1.20, 1.40,
                            1.40, 1.20, 0.60, 0.30, 0.15, 0.10],
         # peaks May-Aug per ProHass/USDA data: 74% of yearly exports
         # Avocado - normalized to 2022 baseline
