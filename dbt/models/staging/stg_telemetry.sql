@@ -28,6 +28,7 @@ renamed as (
         cast(rh_evap_outlet_pct as float64) as rh_evap_outlet_pct,
         cast(airflow_evap_kg_s as float64) as airflow_evap_kg_s,
         cast(temp_coil_suction_c as float64) as temp_coil_suction_c,
+        cast(fruit_mass_stored_kg as float64) as fruit_mass_stored_kg,
         cast(compressor_on as int64) as compressor_on,
         cast(humidifier_on as int64) as humidifier_on
     from source
@@ -36,7 +37,6 @@ renamed as (
 deduplicated as (
     select
         *,
-        datetime(measured_at, timezone_id) as measured_at_localtime,
         row_number() over (
             partition by plant_id, fruit_type, measured_at
             order by loaded_at desc
@@ -48,4 +48,3 @@ select
     * except(row_num)  
 from deduplicated
 where row_num = 1
-

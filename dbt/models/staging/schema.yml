@@ -71,6 +71,9 @@ models:
       - name: temp_coil_suction_c
         description: "Evaporator coil surface temperature measured at the refrigerant suction line in Celsius."
 
+      - name: fruit_mass_stored_kg
+        description: "Total fruit mass in cold storage room tracked via weight sensors on the floor."
+
       - name: compressor_on
         description: "Binary flag indicating if the compressor is active (1) or off (0)."
 

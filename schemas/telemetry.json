@@ -13,6 +13,7 @@
   {"name": "rh_evap_outlet_pct", "type": "FLOAT64", "mode": "NULLABLE"},
   {"name": "airflow_evap_kg_s", "type": "FLOAT64", "mode": "NULLABLE"},
   {"name": "temp_coil_suction_c", "type": "FLOAT64", "mode": "NULLABLE"},
+  {"name": "fruit_mass_stored_kg", "type": "FLOAT64", "mode": "NULLABLE"},
   {"name": "compressor_on", "type": "INT64", "mode": "NULLABLE"},
   {"name": "humidifier_on", "type": "INT64", "mode": "NULLABLE"},
   {"name": "fruit_type", "type": "STRING", "mode": "NULLABLE"},

@@ -4,14 +4,15 @@ namespace: blueberry_cold_storage
 tasks:
   - id: execute_dbt
     type: io.kestra.plugin.scripts.shell.Commands
-    containerImage: ghcr.io/dbt-labs/dbt-bigquery:1.8.0
+    containerImage: blueberry_dbt:v001
     taskRunner:
       type: io.kestra.plugin.scripts.runner.docker.Docker
-    commands: 
-      - mkdir -p /root/.dbt
+    commands:
       - |
+        set -e
+        mkdir -p /root/.dbt
         cat > /root/.dbt/profiles.yml << EOF
-        dbt:
+        blueberry_cold_storage:
           target: prod
           outputs:
             prod:
@@ -23,9 +24,11 @@ tasks:
               keyfile_json: {{secret('GCP_SERVICE_ACCOUNT')}}
               threads: 4
         EOF
-      - git clone --filter=blob:none --no-checkout https://github.com/acasavilca/blueberry-coldchain-analytics.git
-      - cd blueberry-coldchain-analytics/
-      - git sparse-checkout init --cone
-      - git sparse-checkout set dbt/
-      - git checkout dbt/ && cd dbt/
-      - dbt build --profiles-dir /root/.dbt
+        git clone --filter=blob:none --no-checkout https://github.com/acasavilca/blueberry-coldchain-analytics.git
+        cd blueberry-coldchain-analytics/
+        git sparse-checkout init --cone
+        git sparse-checkout set dbt/
+        git checkout master
+        cd dbt/
+        dbt deps --profiles-dir /root/.dbt
+        dbt build --profiles-dir /root/.dbt

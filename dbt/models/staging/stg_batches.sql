@@ -30,17 +30,15 @@ renamed as (
 deduplicated as (
     select
         *,
-        {% for timestamp_col in timestamp_columns %}
-        datetime({{timestamp_col}}, "America/New_York") as {{timestamp_col}}_localtime,
-        {% endfor %}
+        {{ get_localtime(timestamp_columns, 'timezone_id') }}
         row_number() over (
-            partition by plant_id, batch_id
+            partition by plant_id, batch_id, fruit_type
             order by loaded_at desc
         ) as row_num
     from renamed
 )
 
 select
-    * except(row_num)  
+    * except(row_num)
 from deduplicated
 where row_num = 1

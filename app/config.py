@@ -5,7 +5,7 @@ FRUIT_TYPE = "blueberry"
 LATITUDE = -8.5771
 LONGITUDE = -78.5661
 RESAMPLE_RATE = "1min"
-DT_INTERNAL = 1.0 # 10.0
+DT_INTERNAL = 10.0 # 10.0
 
 LOCATION = {
     "latitude": LATITUDE,
@@ -59,7 +59,7 @@ SIMULATION_CONFIG = {
     # "tunnel_exit_fruit_temp": -1.0,
     # "Cp_fruit": 3640.0,
     # chosen zone only; do not keep the whole k_by_zone dict
-    "k_zone": float(np.log(8) / (24.0 * 3600.0)),   # cold_storage
+    # "k_zone": float(np.log(8) / (24.0 * 3600.0)),   # cold_storage
 
     # air exchange / free volume
     "n_ach_eff_per_sec": 2.0 / 86400, # 2.0 / 86400,        # per day
@@ -83,26 +83,13 @@ SIMULATION_CONFIG = {
     # transpiration
     # "k_p": 2.5e-10,
 
-    "CO2_outdoor_ppm": 420,
+    "CO2_outdoor_ppm": 420.0,
     "O2_outdoor_pct": 20.95,
-    "cooling_frac_init": 0.0,
 
     "f_min": .05,
     "V_free_min": .05,
     "m_air_room_min": .05,
     "rho_load_bulk": 250.0,
-
-    "cooling_call_init": False,
-    "cooling_frac_init": 0.0,
-
-    "humidifier_call_init": False,
-    "humidifier_frac_init": 0.0,
-
-    "condense_frac_init": 0.0,
-
-    "fruit_mass_kg_init": 25000.0,     # your current value
-    "total_water_loss_kg_init": 0.0,
-    "eta_init": 0.55,
     
     # Plant parameters
     "T_plant_a": 10.0, # Celsius
@@ -129,7 +116,8 @@ SIMULATION_CONFIG = {
 
     "h_i_walls": 8.0,
     "h_i_roof": 6.0,
-
+    
+    "eta_ref": 0.55,
     # "seed": SEED,
 }
 
@@ -177,10 +165,11 @@ FRUIT_CONFIGS = {
     "blueberry": {
         "seed": 42,
         "tunnel_exit_fruit_temp": -1.0,
-        "target_rh": 0.9125,
-        "m_max": 0.0008,
+        "target_rh": 0.93,
+        "m_max": 0.0006, # 0.0008
         "setpoint": 0.0,
         "Cp_fruit": 3640.0,
+        "k_zone_ref": 9.6e-5,
         "k_p": 2.5e-10,
         "monthly_weight": [0.15, 0.10, 0.08, 0.08, 0.12, 0.25,
                            0.50, 0.85, 1.15, 1.40, 1.30, 0.80],
@@ -198,10 +187,11 @@ FRUIT_CONFIGS = {
     "avocado": {
         "seed": 333,
         "tunnel_exit_fruit_temp": 6.0,  # pre-cooled to ~6°C before cold storage
-        "target_rh": 0.90,
+        "target_rh": 0.925,
         "m_max": 0.0008,
         "setpoint": 5.5,
         "Cp_fruit": 3010.0,  # from USDA specific heat tables
+        "k_zone_ref": 6.4e-5,
         "k_p": 4.0e-10,  # avocados transpire more due to higher oil content
         "monthly_weight": [0.10, 0.15, 0.30, 0.60, 1.20, 1.40,
                            1.40, 1.20, 0.60, 0.30, 0.15, 0.10],

@@ -22,7 +22,6 @@ renamed as (
 deduplicated as (
     select
         *,
-        datetime(event_at, timezone_id) as event_at_localtime,
         row_number() over (
             partition by plant_id, fruit_type, batch_id, event_at, event_type
             order by loaded_at desc
@@ -34,3 +33,7 @@ select
     * except(row_num)  
 from deduplicated
 where row_num = 1
+-- and fruit_type = 'avocado' -- DELETE
+-- and event_type = 'dispatch' -- DELETE
+-- and extract(month from event_at) = 2 -- DELETE
+-- order by batch_id -- DELETE

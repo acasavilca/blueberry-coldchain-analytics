@@ -1,0 +1,56 @@
+id: bq_setup_incremental
+namespace: blueberry_cold_storage
+
+inputs:
+  - id: month
+    type: STRING
+    description: Month for which data was retrieved or generated.
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      serviceAccount: "{{secret('GCP_SERVICE_ACCOUNT')}}"
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+
+tasks:
+  - id: create_telemetry
+    type: io.kestra.plugin.gcp.cli.GCloudCLI
+    namespaceFiles:
+      enabled: true
+    commands:
+      - >
+        bq load --noreplace --source_format=PARQUET
+        {{kv('GCP_RAW_DATASET')}}.telemetry
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/telemetry/month={{ inputs.month }}/*.parquet
+
+  - id: create_events
+    type: io.kestra.plugin.gcp.cli.GCloudCLI
+    namespaceFiles:
+      enabled: true
+    commands:
+      - >
+        bq load --noreplace --source_format=PARQUET
+        {{kv('GCP_RAW_DATASET')}}.events
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/events/month={{ inputs.month }}/*.parquet
+
+  - id: create_batches
+    type: io.kestra.plugin.gcp.cli.GCloudCLI
+    namespaceFiles:
+      enabled: true
+    commands:
+      - >
+        bq load --noreplace --source_format=PARQUET
+        {{kv('GCP_RAW_DATASET')}}.batches
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/batches/month={{ inputs.month }}/*.parquet
+
+  - id: create_satellite
+    type: io.kestra.plugin.gcp.cli.GCloudCLI
+    namespaceFiles:
+      enabled: true
+    commands:
+      - >
+        bq load --noreplace --source_format=PARQUET
+        {{kv('GCP_RAW_DATASET')}}.satellite
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/satellite/month={{ inputs.month }}/*.parquet
+

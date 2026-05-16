@@ -4,13 +4,18 @@ namespace: blueberry_cold_storage
 inputs:
   - id: start_of_operations
     type: STRING
-    description: "the month when the cold storage room started operating or recording data"
+    description: "First day of the months when the facility started recording data, e.g. 2022-01-01"
     defaults: "2022-01-01"
 
-  # - id: start_date
-  #   type: STRING
-  #   description: "Start date of the month, e.g. 2022-01-01"
-  #   defaults: "{{ trigger.date ?? execution.startDate | dateAdd(-1, 'MONTHS') | date('yyyy-MM-dd') }}"
+  - id: start_date
+    type: STRING
+    description: "Start date of the month to be simulated, e.g. 2025-01-01. Only relevant for testing"
+    defaults: "{{ trigger.date ?? execution.startDate | dateAdd(-1, 'MONTHS') | date('yyyy-MM-dd') }}"
+
+  - id: is_test
+    type: STRING
+    defaults: "false"
+    description: "Leave in false for regular runs"
 
   - id: frequency
     type: STRING
@@ -35,6 +40,14 @@ pluginDefaults:
       bucket: "{{kv('GCP_BUCKET_NAME')}}"
 
 tasks:
+  - id: create_bq_tables
+    type: io.kestra.plugin.core.flow.Subflow
+    flowId: bq_setup
+    namespace: blueberry_cold_storage
+    wait: true
+    transmitFailed: true
+    runIf: "{{ kv('bq_tables_created') == 'false' }}"
+
   - id: run_historical_backfill
     type: io.kestra.plugin.core.flow.Subflow
     flowId: backfill_historical
@@ -47,6 +60,7 @@ tasks:
       frequency: "{{ inputs.frequency }}"
       seed: "{{ inputs.seed }}"
       fruit_types: "{{ inputs.fruit_types }}"
+      is_test: "{{ inputs.is_test }}"
 
   - id: run_monthly_backfill_scheduled
     type: io.kestra.plugin.core.flow.Subflow
@@ -56,20 +70,11 @@ tasks:
     transmitFailed: true
     runIf: "{{ kv('backfill_complete') == 'true' }}"
     inputs:
-      start_date: "{{ trigger.date ?? execution.startDate | dateAdd(-1, 'MONTHS') | date('yyyy-MM-dd') }}"
+      start_date: "{{ inputs.start_date }}"
       frequency: "{{ inputs.frequency }}"
       seed: "{{ inputs.seed }}"
       fruit_types: "{{ inputs.fruit_types }}"
-
-  - id: create_raw_bq_tables
-    type: io.kestra.plugin.core.flow.Subflow
-    flowId: bq_setup
-    namespace: blueberry_cold_storage
-
-  - id: execute_dbt
-    type: io.kestra.plugin.core.flow.Subflow
-    flowId: dbt_build
-    namespace: blueberry_cold_storage
+      is_test: "{{ inputs.is_test }}"
 
   - id: mark_month_iteration_as_complete
     type: io.kestra.plugin.core.kv.Set

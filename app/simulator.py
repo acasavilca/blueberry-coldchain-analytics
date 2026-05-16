@@ -422,12 +422,23 @@ def create_numba_dicts():
     float64_dict = Dict.empty(
         key_type=types.unicode_type,
         value_type=types.float64[:],
-        )
+    )
     int8_dict = Dict.empty(
         key_type=types.unicode_type,
         value_type=types.int8[:],
-        )
-    return float64_dict, int8_dict
+    )
+
+    # Dicts for grabbing last values
+    last_vals_float64_dict = Dict.empty(
+        key_type=types.unicode_type,
+        value_type=types.float64,
+    )
+    last_vals_int8_dict = Dict.empty(
+        key_type=types.unicode_type,
+        value_type=types.int8,
+    )
+
+    return float64_dict, int8_dict, last_vals_float64_dict, last_vals_int8_dict
 
 @njit
 def calculate_door_infiltration_gosney(
@@ -880,7 +891,7 @@ def run_simulation_chunk(
     tunnel_exit_fruit_temp,
     Cp_fruit,
     # chosen zone only; do not keep the whole k_by_zone dict
-    k_zone,   # cold_storage
+    k_zone_ref,   # cold_storage
     k_p,
     f_min,
     rho_load_bulk,
@@ -888,18 +899,11 @@ def run_simulation_chunk(
     CO2_outdoor_ppm,
     O2_outdoor_pct,
 
-    cooling_call_init,
-    cooling_frac_init,
-    humidifier_call_init,
-    humidifier_frac_init,
-    condense_frac_init,
-
-    fruit_mass_kg_init,
-    total_water_loss_kg_init,
-    eta_init,
-
+    # Numba-compatible dicts
     float64_dict,
     int8_dict,
+    last_vals_float64_dict,
+    last_vals_int8_dict,
 
     T_plant_a,
     T_plant_b,
@@ -933,16 +937,51 @@ def run_simulation_chunk(
     h_i_walls,
     h_i_roof,
 
-    # fruit_type,
+    eta_ref,
 
     seed,
-    ):
 
-    # Cp_fruit = FRUIT_CONFIGS[fruit_type]["Cp_fruit"]
-    # setpoint = FRUIT_CONFIGS[fruit_type]["setpoint"]
-    # k_p = FRUIT_CONFIGS[fruit_type]["k_p"]
-    # target_rh = FRUIT_CONFIGS[fruit_type]["target_rh"]
-    # tunnel_exit_fruit_temp = FRUIT_CONFIGS[fruit_type]["tunnel_exit_fruit_temp"]
+    ##  Initialization variables/parameters
+
+    # check if this is the first run
+    is_first_run,
+
+    # controllers
+    cooling_call_init,
+    humidifier_call_init,
+    cooling_frac_init,
+    humidifier_frac_init,
+    condense_frac_init,
+
+    # Temperature
+    T_room_init,
+    T_sensor_init,
+    T_plant_init,
+    T_plant_target_init,
+    T_pulp_init,
+
+    # Gases
+    CO2_ppm_init,
+    O2_pct_init,
+
+    # Humidity parameters
+    W_room_init,
+    P_w_room_init,
+    RH_room_init,
+    RH_room_sensor_init,
+    W_coil_sat_init,
+
+    # Logistics
+    door_ext_open_fraction_init,
+    door_int_open_fraction_init,
+
+    # Fruit mass
+    fruit_mass_kg_init,
+    total_water_loss_kg_init,
+
+    ):
+   
+    ## Define static parameters 
 
     new_seed = (seed + int(hour_arr[0]) + int(minute_arr[0])) * int(month_arr[0]) * int(year_arr[0])
     if int(doy_arr[0]) == 1:
@@ -952,8 +991,9 @@ def run_simulation_chunk(
     np.random.seed(new_seed)
     n = len(T_ambient_arr)
 
-    cooling_frac = cooling_frac_init
-    
+    fruit_mass_floor_kg = 1e-9 
+
+    # Coil-related parameters
     UA_coil_evap = Q_rated/TD_design
     m_dot_air_evap = UA_coil_evap / (Cp_air*(1 - BF))
 
@@ -973,51 +1013,6 @@ def run_simulation_chunk(
     A_door_ext = W_door_ext*H_door_ext
     A_door_int = W_door_int*H_door_int
 
-    cooling_call = cooling_call_init
-    cooling_frac = cooling_frac_init
-    humidifier_call = humidifier_call_init
-    humidifier_frac = humidifier_frac_init
-    condense_frac = condense_frac_init
-
-    fruit_mass_floor_kg = 1e-9 # 50.0
-    fruit_mass_kg_init = max(fruit_mass_kg_init, fruit_mass_floor_kg)
-    fruit_mass_kg = fruit_mass_kg_init
-
-    total_water_loss_kg = total_water_loss_kg_init
-    eta = eta_init
-
-    CO2_ppm = CO2_outdoor_ppm
-    O2_pct = O2_outdoor_pct
-
-
-    T_pulp = manual_clipping(
-                np.random.normal(tunnel_exit_fruit_temp + 1, 0.4),
-                tunnel_exit_fruit_temp - 0.5,
-                tunnel_exit_fruit_temp + 2.0
-            )
-    T_room = setpoint
-    T_sensor = T_room
-    P_sat_room_start = p_sat_magnus(T_room) # Magnus-Tetens Approximation
-    P_w_room_start = target_rh*P_sat_room_start
-
-    P_0 = P_arr[0]
-    W_room = w_from_partial_pressure(P_w_room_start, P_0)
-    P_w_room = partial_pressure_from_w(W_room, P_0)
-    # P_sat_room = 610.78 * np.exp(17.27 * T_room / (T_room + 237.3))
-    RH_room = manual_clipping(P_w_room / P_sat_room_start, 0.0, 1.0)
-    RH_room_sensor = RH_room
-    #####
-
-    V_load_eff = fruit_mass_kg / rho_load_bulk
-    f_free = 1.0 - V_load_eff / V_room
-    f_free = manual_clipping(f_free, f_min, 1.0)
-    V_free = f_free * V_room
-    # V_free_floor = 0.0
-    V_free = max(V_free, V_free_min)
-    V_free_liters = V_free * 1000.0
-
-    C_fruit = fruit_mass_kg * Cp_fruit
-
     steps_per_min = timestep // dt_internal
     n_total = int(n * steps_per_min)
 
@@ -1025,6 +1020,9 @@ def run_simulation_chunk(
 
     T, R, T_min, T_max, T_lo, T_hi, T_ref, Q_10, R_ref = get_fruit_resp_params(T_lookup, R_lookup)
 
+    ## Initialize arrays
+
+    # float64 arrays (Numba-friendly)
     T_room_arr = np.empty(n_total, dtype=np.float64)
     T_sensor_arr = np.empty(n_total, dtype=np.float64)
     cooling_frac_arr = np.empty(n_total, dtype=np.float64)
@@ -1060,14 +1058,78 @@ def run_simulation_chunk(
 
     fruit_mass_kg_arr = np.empty(n_total, dtype=np.float64)
 
-    # ints (compact, Numba-friendly)
+    # int8 arrays (compact, Numba-friendly)
     cooling_call_arr = np.empty(n_total, dtype=np.int8)
     humidifier_call_arr = np.empty(n_total, dtype=np.int8)
 
-    T_target = T_plant_a + T_plant_b*T_ambient_arr[0]
-    T_plant = T_target
-    door_ext_open_fraction = 0.0
-    door_int_open_fraction = 0.0
+    # Define initialization variables
+
+    is_first_run = bool(is_first_run)
+    cooling_call_init = bool(cooling_call_init)
+    humidifier_call_init = bool(humidifier_call_init)
+
+    if is_first_run:
+        CO2_ppm_init = CO2_outdoor_ppm 
+        O2_pct_init = O2_outdoor_pct
+        T_room_init = setpoint
+        T_sensor_init = T_room_init
+
+        T_plant_target_init = T_plant_a + T_plant_b*T_ambient_arr[0]
+        T_plant_init = T_plant_target_init
+
+        T_pulp_init = manual_clipping(
+                    np.random.normal(tunnel_exit_fruit_temp + 1, 0.4),
+                    tunnel_exit_fruit_temp - 0.5,
+                    tunnel_exit_fruit_temp + 2.0
+        )
+        
+        P_sat_room_start = p_sat_magnus(T_room_init) # Magnus-Tetens Approximation
+        P_w_room_start = target_rh*P_sat_room_start    
+        P_0 = P_arr[0]
+        W_room_init = w_from_partial_pressure(P_w_room_start, P_0)
+        P_w_room_init = partial_pressure_from_w(W_room_init, P_0)
+        RH_room_init = manual_clipping(P_w_room_init / P_sat_room_start, 0.0, 1.0)
+        RH_room_sensor_init = RH_room_init
+
+        W_coil_sat_init = w_from_partial_pressure(p_sat_magnus(T_room_init), P_0)
+
+    
+    ## Initialize variables
+
+    # Controllers
+    cooling_call = cooling_call_init
+    cooling_frac = cooling_frac_init
+    humidifier_call = humidifier_call_init
+    humidifier_frac = humidifier_frac_init
+    condense_frac = condense_frac_init
+
+    # Temperature
+    T_room = T_room_init
+    T_sensor = T_sensor_init
+    T_plant = T_plant_init
+    T_plant_target = T_plant_target_init
+    T_pulp = T_pulp_init
+
+    # Gases
+    CO2_ppm = CO2_ppm_init
+    O2_pct = O2_pct_init
+
+    # Humidity parameters
+    W_room = W_room_init
+    P_w_room = P_w_room_init    
+    RH_room_sensor = RH_room_sensor_init # CHECK
+    W_coil_sat = W_coil_sat_init
+ 
+    # Logistics
+    door_ext_open_fraction = door_ext_open_fraction_init
+    door_int_open_fraction = door_int_open_fraction_init
+  
+    fruit_mass_kg = max(fruit_mass_kg_init, fruit_mass_floor_kg)
+
+    total_water_loss_kg = total_water_loss_kg_init
+
+    CO2_ppm = CO2_ppm_init
+    O2_pct = O2_pct_init
 
     for i in range(n):
         T_ambient = T_ambient_arr[i]
@@ -1079,10 +1141,10 @@ def run_simulation_chunk(
         T_ground = T_ground_arr[i]
 
         if i == 0: # hour_arr[i] == 0 and minute_arr[i] == 0 and second_arr[i] == 0:
-            eta = manual_clipping(np.random.normal(0.55, 0.02), 0.40, 0.70)
-            total_water_loss_kg = 0.0
-            P_sat_coil = p_sat_magnus(T_room)
-            W_coil_sat = w_from_partial_pressure(P_sat_coil, P_Pa)
+            eta = manual_clipping(np.random.normal(eta_ref, 0.02), 0.40, 0.70)
+            # total_water_loss_kg = 0.0
+            # P_sat_coil = p_sat_magnus(T_room)
+            # W_coil_sat = w_from_partial_pressure(P_sat_coil, P_Pa)
             # T_coil_evap = T_room - TD_design # T_room - (Q_rated / UA_coil_evap) 
 
         delta_mass = fruit_mass_delta_kg[i]
@@ -1108,15 +1170,15 @@ def run_simulation_chunk(
 
         fruit_mass_kg = max(fruit_mass_kg, fruit_mass_floor_kg)
 
-        V_load_eff = fruit_mass_kg / rho_load_bulk
-        f_free = 1.0 - V_load_eff / V_room
-        f_free = manual_clipping(f_free, f_min, 1.0)
+        # V_load_eff = fruit_mass_kg / rho_load_bulk
+        # f_free = 1.0 - V_load_eff / V_room
+        # f_free = manual_clipping(f_free, f_min, 1.0)
 
-        V_free = f_free * V_room
-        V_free = max(V_free, V_free_min)
-        V_free_liters = V_free * 1000.0
+        # V_free = f_free * V_room
+        # V_free = max(V_free, V_free_min)
+        # V_free_liters = V_free * 1000.0
 
-        C_fruit = max(fruit_mass_kg * Cp_fruit, 1e4)
+        # C_fruit = max(fruit_mass_kg * Cp_fruit, 1e4)
 
         if door_ext_open_fraction <= eps and door_int_open_fraction <= eps:
             leak_noise_factor = manual_clipping(np.random.normal(loc=1.0, scale=0.1), 0.85, 1.15)
@@ -1230,7 +1292,7 @@ def run_simulation_chunk(
             # 1. Define the heat transfer potential (k)
             k_transfer = m_dot_air_evap * (1.0 - BF) * Cp_air * cooling_frac
             
-            if k == 0:
+            if is_first_run:
                 T_coil_evap = T_room - (Q_cooling_capacity / max(UA_coil_evap, 1e-6))
 
             Q_cooling_sensible = k_transfer * (T_room - T_coil_evap)
@@ -1252,6 +1314,16 @@ def run_simulation_chunk(
             
             # Derive fake telemetry data for 'real-life' COP calculation from Q_sensible_cooling
             # Q_sensible_cooling = m_dot * Cp_air * (T_in - T_out)
+
+            V_load_eff = fruit_mass_kg / rho_load_bulk
+            f_free = 1.0 - V_load_eff / V_room
+            f_free = manual_clipping(f_free, f_min, 1.0)
+            V_free = f_free * V_room
+            V_free = max(V_free, V_free_min)
+            V_free_liters = V_free * 1000.0
+            C_fruit = max(fruit_mass_kg * Cp_fruit, 1e4)
+
+            k_zone = k_zone_ref*(1.0 - (0.5 * f_free))
 
             # effective room air capacity
             C_air = V_free * rho_air_room * Cp_air
@@ -1392,14 +1464,14 @@ def run_simulation_chunk(
             weight_loss_pct = (total_water_loss_kg / max(fruit_mass_kg_init, 1e-6)) * 100.0
 
 
-            V_load_eff = fruit_mass_kg / rho_load_bulk
-            f_free = 1.0 - V_load_eff / V_room
-            f_free = manual_clipping(f_free, f_min, 1.0)
-            V_free = f_free * V_room
-            V_free = max(V_free, V_free_min)
-            V_free_liters = V_free * 1000.0
+            # V_load_eff = fruit_mass_kg / rho_load_bulk
+            # f_free = 1.0 - V_load_eff / V_room
+            # f_free = manual_clipping(f_free, f_min, 1.0)
+            # V_free = f_free * V_room
+            # V_free = max(V_free, V_free_min)
+            # V_free_liters = V_free * 1000.0
 
-            C_fruit = max(fruit_mass_kg * Cp_fruit, 1e4)
+            # C_fruit = max(fruit_mass_kg * Cp_fruit, 1e4)
 
             T_pulp += dT_pulp
 
@@ -1473,8 +1545,11 @@ def run_simulation_chunk(
             cooling_call_arr[k] = int(cooling_call)
             humidifier_call_arr[k] = int(humidifier_call)
 
-        T_target = T_plant_a + T_plant_b*T_ambient
-        T_plant += (dT_plant/tau_plant) * (T_target - T_plant)
+        T_plant_target = T_plant_a + T_plant_b*T_ambient
+        T_plant += (dT_plant/tau_plant) * (T_plant_target - T_plant)
+
+    if is_first_run:
+        is_first_run = False
 
     float64_dict['T_room'] = T_room_arr
     float64_dict['T_sensor'] = T_sensor_arr
@@ -1518,7 +1593,45 @@ def run_simulation_chunk(
     int8_dict['cooling_call'] = cooling_call_arr
     int8_dict['humidifier_call'] = humidifier_call_arr
 
-    return float64_dict, int8_dict
+    ## Last values
+
+    # Fracs
+    last_vals_float64_dict['cooling_frac_init'] = cooling_frac
+    last_vals_float64_dict['humidifier_frac_init'] = humidifier_frac
+    last_vals_float64_dict['condense_frac_init'] = condense_frac
+    
+    # Temperature
+    last_vals_float64_dict['T_room_init'] = T_room
+    last_vals_float64_dict['T_sensor_init'] = T_sensor
+    last_vals_float64_dict['T_plant_init'] = T_plant
+    last_vals_float64_dict['T_plant_target_init'] = T_plant_target
+    last_vals_float64_dict['T_pulp_init'] = T_pulp
+    
+    # Gases
+    last_vals_float64_dict['CO2_ppm_init'] = CO2_ppm
+    last_vals_float64_dict['O2_pct_init'] = O2_pct
+    
+    # Humidity parameters
+    last_vals_float64_dict['W_room_init'] = W_room
+    last_vals_float64_dict['P_w_room_init'] = P_w_room
+    last_vals_float64_dict['RH_room_init'] = RH_room
+    last_vals_float64_dict['RH_room_sensor_init'] = RH_room_sensor
+    last_vals_float64_dict['W_coil_sat_init'] = W_coil_sat
+    
+    # Logistics
+    last_vals_float64_dict['door_ext_open_fraction_init'] = door_ext_open_fraction
+    last_vals_float64_dict['door_int_open_fraction_init'] = door_int_open_fraction
+    
+    # Fruit mass
+    last_vals_float64_dict['fruit_mass_kg_init'] = fruit_mass_kg
+    last_vals_float64_dict['total_water_loss_kg_init'] = total_water_loss_kg
+
+    # Controllers
+    last_vals_int8_dict['is_first_run'] = np.int8(is_first_run)
+    last_vals_int8_dict['cooling_call_init'] = np.int8(cooling_call)
+    last_vals_int8_dict['humidifier_call_init'] = np.int8(humidifier_call)
+
+    return float64_dict, int8_dict, last_vals_float64_dict, last_vals_int8_dict
 
 def expand_minute_timestamps_to_internal(dt_arr, dt_internal):
     offsets = np.arange(0, 60, int(dt_internal), dtype="timedelta64[s]")
@@ -1552,6 +1665,7 @@ def build_telemetry_table(
     assert len(outputs_dict['m_dot_air_evap']) == n, f"m_dot_air_evap {len(outputs_dict['m_dot_air_evap'])} != datetime {n}"
     assert len(outputs_dict['T_coil_evap']) == n, f"T_coil_evap {len(outputs_dict['T_coil_evap'])} != datetime {n}"
     assert len(calls_dict['humidifier_call']) == n, f"humidifier_call {len(calls_dict['humidifier_call'])} != datetime {n}"
+    assert len(outputs_dict['fruit_mass_kg']) == n, f"fruit_mass_kg {len(outputs_dict['fruit_mass_kg'])} != datetime {n}"
 
     ## Add noise to simulation outputs
     new_seed = (telemetry_dt_arr[0].astype('int64') + telemetry_dt_arr[5].astype('int64')) + seed
@@ -1620,6 +1734,8 @@ def build_telemetry_table(
         + rng.normal(0.0, sigma_m_dot_air_evap, size=m_dot_air_evap.shape)
     )
 
+    fruit_mass_kg = outputs_dict['fruit_mass_kg']
+
     telemetry_df = pd.DataFrame({
         'plant_id': [plant_id] * n,
         'datetime': datetimes,
@@ -1638,6 +1754,7 @@ def build_telemetry_table(
         'compressor_on': cooling_call,
         'humidifier_on': humidifier_call,
         'fruit_type': fruit_type,
+        'fruit_mass_stored_kg': fruit_mass_kg,
     })
     
     round_spec = {
@@ -1645,10 +1762,10 @@ def build_telemetry_table(
         'temp_evap_outlet_c': 2, 'temp_coil_suction_c': 2,
         'rh_room_pct': 2, 'rh_evap_inlet_pct': 2, 'rh_evap_outlet_pct': 2,
         'power_compressor_kw': 4, 'airflow_evap_kg_s': 4,
-        'co2_ppm': 1, 'o2_pct': 3,
+        'co2_ppm': 1, 'o2_pct': 3, 'fruit_mass_stored_kg': 0,
     }
 
-    telemetry_df = telemetry_df.iloc[::10].reset_index(drop=True)
+    telemetry_df = telemetry_df[telemetry_df['datetime'].dt.second == 0].reset_index(drop=True)
     telemetry_df = telemetry_df.round(round_spec)
     return telemetry_df
 

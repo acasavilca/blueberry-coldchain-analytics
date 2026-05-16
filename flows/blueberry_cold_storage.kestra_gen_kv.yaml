@@ -20,11 +20,17 @@ tasks:
     kvType: STRING
     value: kestra-cold-storage-data-generator # TODO make sure it's globally unique!
 
+  - id: gcp_raw_dataset
+    type: io.kestra.plugin.core.kv.Set
+    key: GCP_RAW_DATASET
+    kvType: STRING
+    value: raw
+
   - id: gcp_dataset
     type: io.kestra.plugin.core.kv.Set
     key: GCP_DATASET
     kvType: STRING
-    value: raw_dataset
+    value: prod
 
   - id: gmail_address
     type: io.kestra.plugin.core.kv.Set
@@ -35,6 +41,12 @@ tasks:
   - id: init_backfill_flag
     type: io.kestra.plugin.core.kv.Set
     key: "backfill_complete"
+    kvType: STRING
+    value: 'false'
+
+  - id: init_bq_tables_created
+    type: io.kestra.plugin.core.kv.Set
+    key: "bq_tables_created"
     kvType: STRING
     value: 'false'
 

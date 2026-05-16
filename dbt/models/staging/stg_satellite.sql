@@ -32,7 +32,6 @@ renamed as (
 deduplicated as (
     select
         *,
-        datetime(measured_at, timezone_id) as measured_at_localtime,
         row_number() over (
             partition by measured_at
             order by loaded_at desc

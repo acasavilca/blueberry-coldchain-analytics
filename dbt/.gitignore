@@ -64,6 +64,8 @@ kv_*
 uv.lock
 data_out/
 *password*
+scratchpad/
+*TEST*
 
 # =========================
 # OS

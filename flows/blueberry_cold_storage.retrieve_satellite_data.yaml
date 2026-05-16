@@ -31,22 +31,29 @@ tasks:
     script: |
       import pandas as pd
       from config import LOCATION, RETRIEVAL_CONFIG, WEATHER_DATASET_DTYPES
-      from simulator import retrieve_satellite_data
+      from simulator import retrieve_satellite_data, get_timezone_name, fix_timestamps, encode_coordinates
 
       start_dt = "{{ inputs.start_date }}"
       end_dt = (pd.Timestamp(start_dt) + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d")
       print(f"Retrieving satellite data: {start_dt} -> {end_dt}")
 
+      LATITUDE = LOCATION["latitude"]
+      LONGITUDE = LOCATION["longitude"]
+
       df = retrieve_satellite_data(
           start_dt=start_dt,
           end_dt=end_dt,
-          latitude=LOCATION["latitude"],
-          longitude=LOCATION["longitude"],
+          latitude=LATITUDE,
+          longitude=LONGITUDE,
           dtypes=WEATHER_DATASET_DTYPES,
           frequency="{{ inputs.frequency }}",
           **RETRIEVAL_CONFIG,
       )
       df['loaded_at'] = pd.Timestamp.now()
+      df['timezone_id'] = get_timezone_name(LATITUDE, LONGITUDE)
+
+      df = fix_timestamps(df)
+      
       df.to_parquet("satellite_data.parquet")
       print(f"Retrieved {len(df)} rows")
 
