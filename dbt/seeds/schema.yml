@@ -1,7 +1,7 @@
 seeds:
-  blueberry_cold_storage:
-    fruit_thresholds:
-      +column_types:
+  - name: fruit_thresholds
+    config:
+      column_types:
         fruit_type: string
         heat_damage_temp_c: float64
         freeze_damage_temp_c: float64
