@@ -25,7 +25,7 @@ raw_cop_hourly as (
         loaded_at,
         temp_2m_c as t_ambient_c,
         compressor_duty_cycle,
-        {{ old_calculate_cop(
+        {{ calculate_cop(
             't_evap_inlet_c',
             't_evap_outlet_c',
             'rh_evap_inlet_pct',
