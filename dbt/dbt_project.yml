@@ -2,13 +2,13 @@
 # Name your project! Project names should contain only lowercase characters
 # and underscores. A good package name should reflect your organization's
 # name or the intended use of these models
-name: 'blueberry_cold_storage'
+name: 'chao_cold_storage'
 version: '1.0.0'
 config-version: 2
 # dbt-cloud:
 #    project-id: 70471823576813
 # This setting configures which "profile" dbt uses for this project.
-profile: 'blueberry_cold_storage'
+profile: 'chao_cold_storage'
 
 # These configurations specify where dbt should look for different types of files.
 # The `model-paths` config, for example, states that models in this project can be
@@ -37,7 +37,7 @@ clean-targets:         # directories to be removed by `dbt clean`
 # using the `{{ config(...) }}` macro.
 
 models:
-  blueberry_cold_storage:
+  chao_cold_storage:
     staging:
       +materialized: view
     intermediate:
