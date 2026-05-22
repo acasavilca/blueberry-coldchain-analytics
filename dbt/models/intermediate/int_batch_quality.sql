@@ -18,7 +18,7 @@ with batch_telemetry_agg as (
         countif(temp_damage_check = 'potential_freeze_damage') as minutes_chill_damage,
         countif(temp_damage_check = 'safe_temperature') as minutes_safe
     from {{ ref('int_batch_telemetry_interpolated') }}
-    group by 1, 2, 3, 4, 5, 6, 7, 8, 9
+    group by 1, 2, 3, 4, 5, 6, 7, 8
 ),
 
 fruits_thresholds as (
