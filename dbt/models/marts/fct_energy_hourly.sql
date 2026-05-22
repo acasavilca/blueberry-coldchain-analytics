@@ -38,7 +38,7 @@ with minutely_data as (
         fruit_mass_stored_kg
     from {{ ref('int_envir_mach_join_minutely') }}
     {% if is_incremental() %}
-    where measured_at >= timestamp '{{ var("start_date", "2021-01-01") }}'
+    where measured_at >= timestamp_trunc(timestamp '{{ var("start_date", "2021-01-01") }}', month)
     {% endif %}
 ),
 

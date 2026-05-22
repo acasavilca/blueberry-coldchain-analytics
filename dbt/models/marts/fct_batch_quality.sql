@@ -15,5 +15,5 @@ select
     *
 from {{ ref('int_batch_quality') }}
 {% if is_incremental() %}
-where arrived_at > timestamp '{{ var("start_date", "2021-01-01") }}'
+where arrived_at > timestamp_trunc(timestamp '{{ var("start_date", "2021-01-01") }}', month)
 {% endif %}
