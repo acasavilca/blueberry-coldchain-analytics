@@ -43,3 +43,4 @@ select
     * except(row_num)  
 from deduplicated
 where row_num = 1
+  and measured_at is not null

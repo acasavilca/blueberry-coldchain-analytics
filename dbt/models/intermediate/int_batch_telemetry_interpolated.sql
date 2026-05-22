@@ -23,7 +23,7 @@ fruits_thresholds as (
         fruit_type,
         heat_damage_temp_c,
         freeze_damage_temp_c
-    from {{ ref('fruit_thresholds') }}
+    from {{ ref('fruit_specific_params') }}
 ),
 
 telemetry as (

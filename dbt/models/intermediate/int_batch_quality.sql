@@ -27,7 +27,7 @@ fruits_thresholds as (
         fruit_type,
         heat_damage_minutes_threshold,
         chill_damage_minutes_threshold
-    from {{ ref('fruit_thresholds') }}
+    from {{ ref('fruit_specific_params') }}
 ),
 
 plant_info as (
@@ -55,4 +55,4 @@ select
 from batch_telemetry_agg as b
 join fruits_thresholds as ft on b.fruit_type = ft.fruit_type
 join plant_info as pl on b.plant_id = pl.plant_id
-where b.dispatched_final_at is not null
+-- where b.dispatched_final_at is not null

@@ -33,7 +33,8 @@ select
     * except(row_num)  
 from deduplicated
 where row_num = 1
--- and fruit_type = 'avocado' -- DELETE
--- and event_type = 'dispatch' -- DELETE
--- and extract(month from event_at) = 2 -- DELETE
--- order by batch_id -- DELETE
+  and plant_id is not null
+  and fruit_type is not null
+  and batch_id is not null
+  and event_at is not null
+  and event_type is not null

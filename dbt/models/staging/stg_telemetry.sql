@@ -26,9 +26,10 @@ renamed as (
         cast(temp_evap_outlet_c as float64) as temp_evap_outlet_c,
         cast(rh_evap_inlet_pct as float64) as rh_evap_inlet_pct,
         cast(rh_evap_outlet_pct as float64) as rh_evap_outlet_pct,
-        cast(airflow_evap_kg_s as float64) as airflow_evap_kg_s,
+        cast(evap_fan_speed_pct as float64) as evap_fan_speed_pct,
         cast(temp_coil_suction_c as float64) as temp_coil_suction_c,
         cast(fruit_mass_stored_kg as float64) as fruit_mass_stored_kg,
+        cast(comp_modulation_pct as float64) as comp_modulation_pct,
         cast(compressor_on as int64) as compressor_on,
         cast(humidifier_on as int64) as humidifier_on
     from source
@@ -48,3 +49,6 @@ select
     * except(row_num)  
 from deduplicated
 where row_num = 1
+  and plant_id is not null
+  and fruit_type is not null
+  and measured_at is not null

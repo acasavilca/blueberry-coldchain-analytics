@@ -16,7 +16,6 @@ with batches as (
         mass_kg_initial,
         tunnel_exit_temp_c
     from {{ ref('stg_batches') }}
-    where dispatched_final_at is not null
 ),
 
 events as (

@@ -42,3 +42,8 @@ select
     * except(row_num)
 from deduplicated
 where row_num = 1
+  and plant_id is not null
+  and batch_id is not null
+  and fruit_type is not null
+  and arrived_at is not null
+  and dispatched_final_at is not null

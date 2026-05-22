@@ -2,4 +2,4 @@
     materialized='table'
 ) }}
 
-select * from {{ ref('fruit_thresholds') }}
+select * from {{ ref('fruit_specific_params') }}

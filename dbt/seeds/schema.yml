@@ -1,5 +1,5 @@
 seeds:
-  - name: fruit_thresholds
+  - name: fruit_specific_params
     config:
       column_types:
         fruit_type: string
@@ -10,3 +10,5 @@ seeds:
         rh_low_threshold: int64
         rh_high_threshold: int64
         q_rated_kw: float64
+        td_design: float64
+        bf: float64
