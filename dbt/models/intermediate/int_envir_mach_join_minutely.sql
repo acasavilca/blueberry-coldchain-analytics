@@ -1,5 +1,5 @@
 {{ config(
-    materialized='table',
+    materialized='view',
     partition_by={
         'field': 'measured_at',
         'data_type': 'timestamp',

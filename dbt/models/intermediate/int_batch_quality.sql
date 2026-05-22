@@ -14,7 +14,6 @@ with batch_telemetry_agg as (
         dispatched_final_at,
         residence_time,
         tunnel_exit_temp_c,
-        loaded_at,
         countif(temp_damage_check = 'potential_heat_damage') as minutes_heat_damage,
         countif(temp_damage_check = 'potential_freeze_damage') as minutes_chill_damage,
         countif(temp_damage_check = 'safe_temperature') as minutes_safe
@@ -51,8 +50,6 @@ select
     {{ has_temp_damage_flag('b.minutes_chill_damage', 'ft.chill_damage_minutes_threshold') }} as has_chill_damage,
     b.minutes_heat_damage,
     b.minutes_chill_damage,
-    b.loaded_at
 from batch_telemetry_agg as b
 join fruits_thresholds as ft on b.fruit_type = ft.fruit_type
 join plant_info as pl on b.plant_id = pl.plant_id
--- where b.dispatched_final_at is not null
