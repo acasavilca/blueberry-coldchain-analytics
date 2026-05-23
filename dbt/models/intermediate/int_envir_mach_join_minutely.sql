@@ -1,10 +1,5 @@
 {{ config(
     materialized='view',
-    partition_by={
-        'field': 'measured_at',
-        'data_type': 'timestamp',
-        'granularity': 'month'
-    }
 ) }}
 
 {% set timestamp_columns = ["unflt.measured_at"] %}

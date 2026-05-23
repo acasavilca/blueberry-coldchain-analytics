@@ -30,7 +30,6 @@ renamed as (
 deduplicated as (
     select
         *,
-        {{ get_localtime(timestamp_columns, 'timezone_id') }}
         row_number() over (
             partition by plant_id, batch_id, fruit_type
             order by loaded_at desc

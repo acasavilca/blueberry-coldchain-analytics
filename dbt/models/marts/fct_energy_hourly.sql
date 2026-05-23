@@ -1,7 +1,3 @@
-{# {% set partitions_to_replace = [
-    'measured_hour',
-    ''
-]%} #}
 
 {{ config(
     materialized='incremental',

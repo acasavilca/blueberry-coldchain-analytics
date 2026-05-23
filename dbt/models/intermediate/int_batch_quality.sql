@@ -49,7 +49,7 @@ select
     {{ has_temp_damage_flag('b.minutes_heat_damage', 'ft.heat_damage_minutes_threshold') }} as has_heat_damage,
     {{ has_temp_damage_flag('b.minutes_chill_damage', 'ft.chill_damage_minutes_threshold') }} as has_chill_damage,
     b.minutes_heat_damage,
-    b.minutes_chill_damage,
+    b.minutes_chill_damage
 from batch_telemetry_agg as b
 join fruits_thresholds as ft on b.fruit_type = ft.fruit_type
 join plant_info as pl on b.plant_id = pl.plant_id
