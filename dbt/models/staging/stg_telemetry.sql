@@ -30,6 +30,9 @@ renamed as (
         cast(temp_coil_suction_c as float64) as temp_coil_suction_c,
         cast(fruit_mass_stored_kg as float64) as fruit_mass_stored_kg,
         cast(comp_modulation_pct as float64) as comp_modulation_pct,
+
+        cast(door_int_open as int64) as door_int_open,
+        cast(door_ext_open as int64) as door_ext_open,
         cast(compressor_on as int64) as compressor_on,
         cast(humidifier_on as int64) as humidifier_on
     from source

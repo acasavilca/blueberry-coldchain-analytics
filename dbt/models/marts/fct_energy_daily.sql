@@ -9,7 +9,7 @@
     partition_by={
         'field': 'date_utc',
         'data_type': 'timestamp',
-        'granularity': 'month'
+        'granularity': 'day'
     },
     cluster_by=['plant_id', 'fruit_type']
 ) }}
@@ -38,11 +38,11 @@ with minutely_data as (
         fruit_mass_stored_kg
     from {{ ref('int_envir_mach_join_minutely') }}
     {% if is_incremental() %}
-    where measured_at >= timestamp_trunc(timestamp '{{ var("start_date", "2021-01-01") }}', month)
+    where measured_at >= timestamp_trunc(timestamp '{{ var("start_date", "2021-01-01") }}', day)
     {% endif %}
 ),
 
-hourly_aggregation as (
+daily_aggregation as (
     select
         md5(concat(plant_id, '-', fruit_type, '-', date_utc)) as energy_daily_pk,
         plant_id,
@@ -79,6 +79,6 @@ hourly_aggregation as (
     group by 1, 2, 3, 4
 )
 
-select * from hourly_aggregation
+select * from daily_aggregation
 -- where fruit_type = 'avocado'
 -- order by cop_daily desc

@@ -1,7 +1,5 @@
 {{ config(materialized='view') }}
 
-{% set timestamp_columns = ["arrived_at", "dispatched_first_at", "dispatched_final_at"] %}
-
 with source as (
     select * from {{ source('raw_data', 'batches') }}
 ),

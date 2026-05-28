@@ -5,7 +5,7 @@
     partition_by={
         'field': 'hour_utc',
         'data_type': 'timestamp',
-        'granularity': 'month'
+        'granularity': 'day'
     },
     cluster_by=['plant_id', 'fruit_type']
 ) }}

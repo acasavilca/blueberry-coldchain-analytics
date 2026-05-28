@@ -24,7 +24,6 @@
     pressure_pa,
     airflow_evap_kg_s,
     comp_modulation_frac,
-    power_compressor_w,
     q_rated_w
 ) %}
 

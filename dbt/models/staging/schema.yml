@@ -95,11 +95,37 @@ models:
                 min_value: 0.0
                 max_value: 100.0
 
+      - name: door_int_open
+        description: "Binary flag indicating if the internal door (i.e., the one through which batches come into the cold room) is open (1) or closed (0)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+
+      - name: door_ext_open
+        description: "Binary flag indicating if the external door (i.e., the one through which batches are dispatched) is open (1) or closed (0)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+
       - name: compressor_on
         description: "Binary flag indicating if the compressor is active (1) or off (0)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
 
       - name: humidifier_on
         description: "Binary flag indicating if the humidifier is active (1) or off (0)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
 
   - name: stg_batches
     description: "Staging model for historical batch records including arrival, dispatch, and weight data."

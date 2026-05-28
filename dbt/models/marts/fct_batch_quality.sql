@@ -4,7 +4,7 @@
     partition_by={
         'field': 'arrived_at',
         'data_type': 'timestamp',
-        'granularity': 'month'
+        'granularity': 'hour'
     },
     cluster_by=['plant_id', 'fruit_type'],
     unique_key=['plant_id', 'batch_id', 'fruit_type']
@@ -15,5 +15,5 @@ select
     *
 from {{ ref('int_batch_quality') }}
 {% if is_incremental() %}
-where arrived_at > timestamp_trunc(timestamp '{{ var("start_date", "2021-01-01") }}', month)
+where arrived_at > timestamp_trunc(timestamp '{{ var("start_date", "2021-01-01") }}', hour)
 {% endif %}

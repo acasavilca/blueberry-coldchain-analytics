@@ -46,8 +46,8 @@ select
     {{ get_localtime(timestamp_columns, 'pl.timezone_id') }}
     b.residence_time,
     b.tunnel_exit_temp_c,
-    {{ has_temp_damage_flag('b.minutes_heat_damage', 'ft.heat_damage_minutes_threshold') }} as has_heat_damage,
-    {{ has_temp_damage_flag('b.minutes_chill_damage', 'ft.chill_damage_minutes_threshold') }} as has_chill_damage,
+    {{ has_damage_flag('b.minutes_heat_damage', 'ft.heat_damage_minutes_threshold') }} as has_heat_damage,
+    {{ has_damage_flag('b.minutes_chill_damage', 'ft.chill_damage_minutes_threshold') }} as has_chill_damage,
     b.minutes_heat_damage,
     b.minutes_chill_damage
 from batch_telemetry_agg as b

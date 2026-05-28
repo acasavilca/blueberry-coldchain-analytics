@@ -33,7 +33,7 @@ telemetry as (
         tel.temp_room_c,
         tel.temp_pulp_c,
         tel.measured_at,
-        {{ temp_abuse_flag('tel.temp_pulp_c', 'ft.heat_damage_temp_c', 'ft.freeze_damage_temp_c') }} as temp_damage_check
+        {{ parameter_abuse_flag('tel.temp_pulp_c', 'ft.chill_damage_temp_c', 'ft.heat_damage_temp_c') }} as temp_damage_check
     from {{ ref('stg_telemetry') }} tel
     join fruits_thresholds ft
         on tel.fruit_type = ft.fruit_type
