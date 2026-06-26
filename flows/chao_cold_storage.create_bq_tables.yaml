@@ -1,5 +1,5 @@
-id: bq_setup
-namespace: blueberry_cold_storage
+id: create_bq_tables
+namespace: chao_cold_storage
 
 pluginDefaults:
   - type: io.kestra.plugin.gcp
@@ -64,10 +64,3 @@ tasks:
         --clustering_fields=location_id
         {{kv('GCP_RAW_DATASET')}}.satellite
         ./satellite.json
-
-  - id: mark_bq_tables_as_created
-    type: io.kestra.plugin.core.kv.Set
-    runIf: "{{ kv('bq_tables_created') == 'false' }}"
-    key: "bq_tables_created"
-    value: "true"
-

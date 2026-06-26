@@ -1,10 +1,11 @@
 import numpy as np
 
 # SEED = 42
-FRUIT_TYPE = "blueberry"
+# FRUIT_TYPE = "blueberry"
 LATITUDE = -8.5771
 LONGITUDE = -78.5661
 RESAMPLE_RATE = "1min"
+COMPRESSOR_INSTALLATION_DATE = '2021-01-01'
 DT_INTERNAL = 10.0 # 10.0
 
 LOCATION = {
@@ -19,6 +20,7 @@ RETRIEVAL_CONFIG = {
 
 FORCING_CONFIG = {
     "resample_rate": RESAMPLE_RATE,
+    "compressor_installation_date": COMPRESSOR_INSTALLATION_DATE,
 }
 
 SCHEDULER_CONFIG = {
@@ -27,7 +29,36 @@ SCHEDULER_CONFIG = {
     "max_inventory_kg": 100_000.0,
     "arrival_scale": 1100.0, # 275.0,
     "shipment_scale": 20_000.0, # 9500.0,
-    # "seed": SEED,
+    "ext_duration_mean_min": 1.5,
+    "int_duration_mean_min": 0.5,
+    "duration_shape": 2.0,
+}
+
+LOGISTICS_CONFIG = {
+    "lambda_ext_bg_per_hour_arr": np.array([
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.02,
+        0.05, 0.10, 0.20, 0.25, 0.20, 0.15,
+        0.10, 0.10, 0.15, 0.20, 0.25, 0.20,
+        0.10, 0.05, 0.02, 0.00, 0.00, 0.00
+    ], dtype=float),
+    "lambda_int_bg_per_hour_arr": np.array([
+        0.02, 0.02, 0.02, 0.02, 0.02, 0.05,
+        0.20, 0.50, 1.00, 1.20, 1.30, 1.20,
+        1.00, 0.80, 1.00, 1.20, 1.30, 1.10,
+        0.60, 0.20, 0.08, 0.05, 0.02, 0.02
+    ], dtype=float),
+    "lambda_arrival_per_hour_arr": np.array([
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.05,
+        0.20, 0.60, 1.20, 1.50, 1.20, 0.80,
+        0.60, 0.50, 0.80, 1.00, 1.20, 1.00,
+        0.50, 0.20, 0.05, 0.00, 0.00, 0.00
+    ], dtype=float),
+    "lambda_shipment_per_hour_arr": np.array([
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.05, 0.10, 0.15, 0.20,
+        0.40, 0.50, 0.80, 1.00, 1.20, 1.00,
+        0.50, 0.20, 0.05, 0.00, 0.00, 0.00
+    ], dtype=float),
 }
 
 SIMULATION_CONFIG = {
@@ -42,14 +73,20 @@ SIMULATION_CONFIG = {
     # "T_ground": 19.0,
     # "Q_rated": 22_000.0,
     "f_structure": 0.05,
-    "k_wind_U": 0.02,
+    # "k_wind_U": 0.02,
     "Cp_air": 1006.0,
+
+    "degradation_factor": .92,
+
+    "compressor_degradation_rate": 5e-6,
 
     # control
     "setpoint": 0.0,
     "deadband": .5, # 0.5,
     "tau_cool": 120.0, # 120.0, # 120.0, # 60.0,
     "tau_sensor": 90.0, # 90.0, # 90.0, # 60.0,
+
+    "cooling_frac_floor": 0.05,
 
     # timestep
     "dt_internal": DT_INTERNAL,
@@ -71,14 +108,14 @@ SIMULATION_CONFIG = {
 
     # coil / humidity control
     # "T_coil_ref": -2.0,
-    "BF": 0.20, # 0.5, # 0.2,
+    "BF": 0.30, # 0.5, # 0.2,
     "tau_condense": 30.0, # 120.0, # 15.0,   # replace if you settled on another final value
     # "target_rh": .965, # 0.95,
-    "rh_deadband": 0.02,
+    "rh_deadband": 0.02, # 0.02
     "tau_humid_frac": 180.0, # 180.0, # 180.0, # 60.0,
     "tau_humid_sensor": 300.0, # 300.0, # 10.0, # 10.0,
     # "m_max": 0.0008, # 0.003,
-    "f_evap_humid": 0.95, # 0.4,
+    "f_evap_humid": 0.9, # 0.95
     
     # transpiration
     # "k_p": 2.5e-10,
@@ -98,8 +135,13 @@ SIMULATION_CONFIG = {
     "tau_plant": 7200.0, # hrs
     "RH_plant": 0.65,
 
+    # Compressor parameters
+    "a_cond": 12.0, # 8.0
+    "b_cond": 0.4,
+    "eta_ref": 0.55,
+
     # Door parameters
-    "tau_door_ext": 10.0, # sec
+    "tau_door_ext": 15.0, # sec
     "tau_door_int": 15.0, # sec
     "W_door_ext": 3.5, # m
     "H_door_ext": 4.0, # m
@@ -107,7 +149,7 @@ SIMULATION_CONFIG = {
     "H_door_int": 3.5, # m
     "td_coeff": 0.15,
 
-    "k_door_ext": .3, # .2,
+    "k_door_ext": .2, # .2,
     "k_door_int": .2, # .2,
 
     # "m_dot_evap_air_kg_s": 5.0,
@@ -117,7 +159,6 @@ SIMULATION_CONFIG = {
     "h_i_walls": 8.0,
     "h_i_roof": 6.0,
     
-    "eta_ref": 0.55,
     # "seed": SEED,
 }
 
@@ -156,6 +197,72 @@ WEATHER_DATASET_DTYPES = {
     ],
 }
 
+EVENTS_DTYPES = {
+    "DTYPES": {
+        "plant_id": "string",
+        "event_type": "string",
+        "batch_id": "Int64",
+        "mass_kg": "float64",
+        "fruit_type": "string",
+        "quality_grade": "string",
+        "tunnel_exit_temp_c": "float64",
+        "timezone_id": "string",
+    },
+    "DATETIME_COLS": [
+        "timestamp",
+        "loaded_at",
+    ],
+}
+
+BATCHES_DTYPES = {
+    "DTYPES": {
+        "plant_id": "string",
+        "batch_id": "Int64",
+        "fruit_type": "string",
+        "mass_kg_initial": "float64",
+        "mass_kg_remaining": "float64",
+        "tunnel_exit_temp_c": "float64",
+        "quality_grade": "string",
+        "timezone_id": "string",
+    },
+    "DATETIME_COLS": [
+        "arrival_ts",
+        "first_dispatch_ts",
+        "final_dispatch_ts",
+        "loaded_at",
+    ],
+}
+
+TELEMETRY_DTYPES = {
+    "DTYPES": {
+        "plant_id": "string",
+        "temp_room_c": "float64",
+        "temp_pulp_c": "float64",
+        "rh_room_pct": "float64",
+        "co2_ppm": "float64",
+        "o2_pct": "float64",
+        "power_compressor_kw": "float64",
+        "temp_evap_inlet_c": "float64",
+        "temp_evap_outlet_c": "float64",
+        "rh_evap_inlet_pct": "float64",
+        "rh_evap_outlet_pct": "float64",
+        "evap_fan_speed_pct": "float64",
+        "temp_coil_suction_c": "float64",
+        "fruit_mass_stored_kg": "float64",
+        "comp_modulation_pct": "float64",
+        "door_int_open": "Int64",
+        "door_ext_open": "Int64",
+        "compressor_on": "Int64",
+        "humidifier_on": "Int64",
+        "fruit_type": "string",
+        "timezone_id": "string",
+    },
+    "DATETIME_COLS": [
+        "datetime",
+        "loaded_at",
+    ],
+}
+
 MISSING_TSOIL_54CM = {
         "2022": 27.70745528136833,
         "2021": 27.803116438356163,
@@ -164,8 +271,8 @@ MISSING_TSOIL_54CM = {
 FRUIT_CONFIGS = {
     "blueberry": {
         "seed": 42,
-        "tunnel_exit_fruit_temp": -1.0,
-        "target_rh": 0.93,
+        "tunnel_exit_fruit_temp_ref": -1.0,
+        "target_rh": 0.925,
         "m_max": 0.0006, # 0.0008
         "setpoint": 0.0,
         "Cp_fruit": 3640.0,
@@ -181,14 +288,17 @@ FRUIT_CONFIGS = {
             2025: 1.18,   # record +57% recovery
             2026: 1.17,   # ~flat, slight dip
         },
+        # [Grade A (Export), Grade B (Domestic), Grade C (Processing)]
+        # Blueberries are highly perishable; high sorting standards keep export high.
+        "base_quality": [0.75, 0.18, 0.07],
         "Q_rated": 22_000.0, # W # 22_000.0
-        "TD_design": 2.0, # 3.0
+        "TD_design": 4.0, # 3.0 2.0
     },
     "avocado": {
         "seed": 333,
-        "tunnel_exit_fruit_temp": 6.0,  # pre-cooled to ~6°C before cold storage
-        "target_rh": 0.925,
-        "m_max": 0.0008,
+        "tunnel_exit_fruit_temp_ref": 6.0,  # pre-cooled to ~6°C before cold storage
+        "target_rh": 0.925, # 0.925
+        "m_max": 0.0005, # 0.0008
         "setpoint": 5.5,
         "Cp_fruit": 3010.0,  # from USDA specific heat tables
         "k_zone_ref": 6.4e-5,
@@ -204,7 +314,22 @@ FRUIT_CONFIGS = {
             2025: 1.73,   # record +38%
             2026: 1.83,   # +6% projected
         },
+        # [Grade A (Export/Hass Category 1), Grade B (Category 2), Grade C (Oil/Guacamole)]
+        # Avocados have rigid sizing/cosmetic rules; more fruit drops to category 2 natively.
+        "base_quality": [0.70, 0.22, 0.08],
         "Q_rated": 22_000.0, # W
-        "TD_design": 3.0,
+        "TD_design": 4.0,
     },
 }
+
+for fruit in FRUIT_CONFIGS.keys():
+    Q_rated = FRUIT_CONFIGS[fruit]["Q_rated"]
+    TD_design = FRUIT_CONFIGS[fruit]["TD_design"]
+
+    UA_coil_theoretical = Q_rated/TD_design
+
+    Cp_air = SIMULATION_CONFIG["Cp_air"]
+    BF = SIMULATION_CONFIG["BF"]
+
+    FRUIT_CONFIGS[fruit]["m_dot_air_theoretical"] = UA_coil_theoretical / (Cp_air * (1 - BF))
+

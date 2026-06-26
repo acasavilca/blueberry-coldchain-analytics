@@ -1,10 +1,10 @@
-id: bq_setup_incremental
-namespace: blueberry_cold_storage
+id: bq_load_incremental
+namespace: chao_cold_storage
 
 inputs:
-  - id: month
-    type: STRING
-    description: Month for which data was retrieved or generated.
+  - id: date
+    type: DATE
+    description: date for which data was retrieved or generated.
 
 pluginDefaults:
   - type: io.kestra.plugin.gcp
@@ -22,7 +22,7 @@ tasks:
       - >
         bq load --noreplace --source_format=PARQUET
         {{kv('GCP_RAW_DATASET')}}.telemetry
-        gs://{{kv('GCP_BUCKET_NAME')}}/raw/telemetry/month={{ inputs.month }}/*.parquet
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/telemetry/year={{ inputs.date | date('yyyy') }}/month={{ inputs.date | date('MM') }}/day={{ inputs.date | date('dd') }}/*.parquet
 
   - id: create_events
     type: io.kestra.plugin.gcp.cli.GCloudCLI
@@ -32,7 +32,7 @@ tasks:
       - >
         bq load --noreplace --source_format=PARQUET
         {{kv('GCP_RAW_DATASET')}}.events
-        gs://{{kv('GCP_BUCKET_NAME')}}/raw/events/month={{ inputs.month }}/*.parquet
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/events/year={{ inputs.date | date('yyyy') }}/month={{ inputs.date | date('MM') }}/day={{ inputs.date | date('dd') }}/*.parquet
 
   - id: create_batches
     type: io.kestra.plugin.gcp.cli.GCloudCLI
@@ -42,7 +42,7 @@ tasks:
       - >
         bq load --noreplace --source_format=PARQUET
         {{kv('GCP_RAW_DATASET')}}.batches
-        gs://{{kv('GCP_BUCKET_NAME')}}/raw/batches/month={{ inputs.month }}/*.parquet
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/batches/year={{ inputs.date | date('yyyy') }}/month={{ inputs.date | date('MM') }}/day={{ inputs.date | date('dd') }}/*.parquet
 
   - id: create_satellite
     type: io.kestra.plugin.gcp.cli.GCloudCLI
@@ -52,5 +52,4 @@ tasks:
       - >
         bq load --noreplace --source_format=PARQUET
         {{kv('GCP_RAW_DATASET')}}.satellite
-        gs://{{kv('GCP_BUCKET_NAME')}}/raw/satellite/month={{ inputs.month }}/*.parquet
-
+        gs://{{kv('GCP_BUCKET_NAME')}}/raw/satellite/year={{ inputs.date | date('yyyy') }}/month={{ inputs.date | date('MM') }}/day={{ inputs.date | date('dd') }}/*.parquet

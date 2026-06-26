@@ -47,6 +47,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - kestra_tmp:/tmp/kestra-wd
     environment:
+      JAVA_OPTS: "-Xmx1g"
       KESTRA_CONFIGURATION: |
         datasources:
           postgres:

@@ -60,6 +60,8 @@ data_out/
 *password*
 clean_dataset.sh
 *TEST*
+errors.txt
+test_reinit*
 # =========================
 # OS
 # =========================

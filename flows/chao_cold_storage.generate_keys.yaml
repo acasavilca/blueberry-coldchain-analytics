@@ -1,5 +1,8 @@
-id: kestra_gen_kv
-namespace: blueberry_cold_storage
+id: generate_keys
+namespace: chao_cold_storage
+
+labels:
+  mute_alerts: "true"
 
 tasks:
   - id: gcp_project_id
@@ -32,22 +35,24 @@ tasks:
     kvType: STRING
     value: prod
 
-  - id: gmail_address
+  - id: init_initialization_flag
     type: io.kestra.plugin.core.kv.Set
-    key: MY_GMAIL
-    kvType: STRING
-    value: acasavilca@gmail.com
+    key: "is_initialized"
+    kvType: BOOLEAN
+    value: "false"
 
   - id: init_backfill_flag
     type: io.kestra.plugin.core.kv.Set
     key: "backfill_complete"
-    kvType: STRING
-    value: 'false'
+    kvType: BOOLEAN
+    value: "false"
 
-  - id: init_bq_tables_created
-    type: io.kestra.plugin.core.kv.Set
-    key: "bq_tables_created"
-    kvType: STRING
-    value: 'false'
-
+  - id: system_keys
+    type: io.kestra.plugin.core.flow.Subflow
+    namespace: system
+    wait: true
+    transmitFailed: true
+    labels:
+      mute_alerts: true
+    flowId: gen_system_keys
 

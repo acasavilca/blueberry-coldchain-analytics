@@ -1,5 +1,12 @@
 id: dbt_build
-namespace: blueberry_cold_storage
+namespace: chao_cold_storage
+
+inputs:
+  - id: start_date
+    type: DATE
+
+variables:
+  start_date: "{{ inputs.start_date | date('yyyy-MM-dd') }}"
 
 tasks:
   - id: execute_dbt
@@ -12,7 +19,7 @@ tasks:
         set -e
         mkdir -p /root/.dbt
         cat > /root/.dbt/profiles.yml << EOF
-        blueberry_cold_storage:
+        chao_cold_storage:
           target: prod
           outputs:
             prod:
@@ -31,4 +38,8 @@ tasks:
         git checkout master
         cd dbt/
         dbt deps --profiles-dir /root/.dbt
-        dbt build --profiles-dir /root/.dbt
+        dbt seed --profiles-dir /root/.dbt
+        dbt build --profiles-dir /root/.dbt --select staging
+        dbt build --profiles-dir /root/.dbt --select intermediate
+        dbt build --profiles-dir /root/.dbt --select marts --vars 'start_date: "{{ render(vars.start_date) }}"'
+

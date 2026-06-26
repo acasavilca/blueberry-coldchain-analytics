@@ -18,7 +18,7 @@ with telemetry_filtered as (
         temp_coil_suction_c
     from {{ ref('stg_telemetry') }}
     -- where compressor_on = 1
-    where comp_modulation_pct > 0
+    where comp_modulation_pct > 0.0
 ),
 
 fruits_specs as (
