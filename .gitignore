@@ -49,11 +49,14 @@ blueberry_dbt/logs/
 # Project-specific
 # =========================
 *notes*.txt
+NOTES*
 ref_files/
 .old_*
 ref_*
 *BACKUP*
-DEL*
+DEL_*
+del_*
+DELETE*
 kv_*
 uv.lock
 data_out/
@@ -62,6 +65,8 @@ clean_dataset.sh
 *TEST*
 errors.txt
 test_reinit*
+crash_log.txt
+_notes*
 # =========================
 # OS
 # =========================

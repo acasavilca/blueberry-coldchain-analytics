@@ -1,4 +1,5 @@
 import numpy as np
+from pytimeparse.timeparse import timeparse
 
 # SEED = 42
 # FRUIT_TYPE = "blueberry"
@@ -6,7 +7,7 @@ LATITUDE = -8.5771
 LONGITUDE = -78.5661
 RESAMPLE_RATE = "1min"
 COMPRESSOR_INSTALLATION_DATE = '2021-01-01'
-DT_INTERNAL = 10.0 # 10.0
+DT_INTERNAL = 5.0 # 10.0
 
 LOCATION = {
     "latitude": LATITUDE,
@@ -15,7 +16,7 @@ LOCATION = {
 
 RETRIEVAL_CONFIG = {
     "measurements": "temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation,dewpoint_2m,surface_pressure,soil_temperature_54cm",
-    "timezone": None, # "auto",
+    "timezone_param": None, # "auto",
 }
 
 FORCING_CONFIG = {
@@ -24,14 +25,22 @@ FORCING_CONFIG = {
 }
 
 SCHEDULER_CONFIG = {
-    "forcing_dt_sec": 60.0,
+    "forcing_dt_sec": float(timeparse(RESAMPLE_RATE)),
     "min_ship_mass": 5000.0,
+    "min_arrived_mass": 100.0,
+    "min_dispatch_weight": 0.5,
     "max_inventory_kg": 100_000.0,
     "arrival_scale": 1100.0, # 275.0,
     "shipment_scale": 20_000.0, # 9500.0,
     "ext_duration_mean_min": 1.5,
     "int_duration_mean_min": 0.5,
     "duration_shape": 2.0,
+    "max_active_batches": 500,
+    "max_arrivals_per_run": 50_000,# 300,
+    "max_dispatches_per_run": 100_000, # 3000,
+    "max_batches_per_dispatch": 20,
+    "num_fields_arrival": 5, # batch_id, timestamp, quality_grade, mass_kg, tunnel_exit_temp_c
+    "num_fields_dispatch": 6, # batch_id, timestamp, quality_grade, mass_at_dispatch, mass_removed, mass_remaining
 }
 
 LOGISTICS_CONFIG = {
@@ -264,14 +273,15 @@ TELEMETRY_DTYPES = {
 }
 
 MISSING_TSOIL_54CM = {
-        "2022": 27.70745528136833,
-        "2021": 27.803116438356163,
+        2022: 27.70745528136833,
+        2021: 27.803116438356163,
 }
 
-FRUIT_CONFIGS = {
+FRUITS_CONFIG = {
     "blueberry": {
-        "seed": 42,
+        "seed_offset": 0,
         "tunnel_exit_fruit_temp_ref": -1.0,
+        "max_dwell_days": 15.0,
         "target_rh": 0.925,
         "m_max": 0.0006, # 0.0008
         "setpoint": 0.0,
@@ -295,8 +305,9 @@ FRUIT_CONFIGS = {
         "TD_design": 4.0, # 3.0 2.0
     },
     "avocado": {
-        "seed": 333,
+        "seed_offset": 333,
         "tunnel_exit_fruit_temp_ref": 6.0,  # pre-cooled to ~6°C before cold storage
+        "max_dwell_days": 21.0,
         "target_rh": 0.925, # 0.925
         "m_max": 0.0005, # 0.0008
         "setpoint": 5.5,
@@ -322,14 +333,14 @@ FRUIT_CONFIGS = {
     },
 }
 
-for fruit in FRUIT_CONFIGS.keys():
-    Q_rated = FRUIT_CONFIGS[fruit]["Q_rated"]
-    TD_design = FRUIT_CONFIGS[fruit]["TD_design"]
+for fruit in FRUITS_CONFIG.keys():
+    Q_rated = FRUITS_CONFIG[fruit]["Q_rated"]
+    TD_design = FRUITS_CONFIG[fruit]["TD_design"]
 
     UA_coil_theoretical = Q_rated/TD_design
 
     Cp_air = SIMULATION_CONFIG["Cp_air"]
     BF = SIMULATION_CONFIG["BF"]
 
-    FRUIT_CONFIGS[fruit]["m_dot_air_theoretical"] = UA_coil_theoretical / (Cp_air * (1 - BF))
+    FRUITS_CONFIG[fruit]["m_dot_air_theoretical"] = UA_coil_theoretical / (Cp_air * (1 - BF))
 
